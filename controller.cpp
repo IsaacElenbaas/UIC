@@ -30,17 +30,27 @@ void calibrate(device* dev) {
 	// TODO: needs to handle ctrl+c and input disconnecting
 	// TODO: attempt to load calibration from file
 	char c;
-	for(c_i = 0; c_i < CNTLR_MAX_ANALOG_2D; c_i++) {
+	int available_analog_axes = CNTLR_MAX_ANALOG;
+
+	// TODO: gyro
+
+/*{{{ analog 2Ds*/
+	for(c_i = 0; true; c_i++) {
+		if(available_analog_axes < 2) {
+			std::cout << "Not enough analog axes available, continuing" << std::endl;
+			break;
+		}
 		c_stage = (stage){1, 0};
-		std::cout << "Press space to add a 2D input or C to continue" << std::endl;
-		do { c = getchar(); std::cout << "\r\033[K"; } while(c != ' ' && c != 'c' && c != 'C');
-		if(c == 'c' || c == 'C') break;
+		std::cout << "Press C to add a 2D input or space to continue" << std::endl;
+		do { c = getchar(); std::cout << "\r\033[K"; } while(c != 'c' && c != 'C' && c != ' ');
+		if(c == ' ') break;
 
 	/*{{{ identify*/
 		c_mut.lock(); memset(c_axis, 0, sizeof(c_axis)); c_mut.unlock();
 		std::cout << "Spin to identify it" << std::endl;
 		c_stage = (stage){c_stage.load().a, c_stage.load().b+1};
 		calibrate_continue_sem.acquire();
+		c_mut.lock(); c_mut.unlock(); // need to ensure second axis was set
 		cal->analog_2ds[c_i].x_code = std::max_element(std::begin(c_axis), std::end(c_axis))-c_axis;
 		c_axis[cal->analog_2ds[c_i].x_code] = 0;
 		cal->analog_2ds[c_i].y_code = std::max_element(std::begin(c_axis), std::end(c_axis))-c_axis;
@@ -121,14 +131,82 @@ void calibrate(device* dev) {
 		c_stage = (stage){c_stage.load().a, c_stage.load().b+1};
 		// clearing in case calibration_event did it twice
 		calibrate_continue_sem.try_acquire();
-		std::cout << "Check the input below and press C to continue or D to discard" << std::endl;
+		std::cout << "Check the input below and press D to discard or space to continue" << std::endl;
 		c_mut.unlock();
-		do { c = getchar(); std::cout << "\r\033[K"; } while(c != 'c' && c != 'C' && c != 'd' && c != 'D');
+		do { c = getchar(); std::cout << "\r\033[K"; } while(c != 'd' && c != 'D' && c != ' ');
 		if(c == 'd' || c == 'D') c_i--;
-		else cal->analog_2ds[c_i].present = true;
+		else {
+			cal->analog_2ds[c_i].present = true;
+			available_analog_axes -= 2;
+		}
 		c_stage = (stage){c_stage.load().a, c_stage.load().b+1};
 		std::cout << "\r\033[K";
 	}
+/*}}}*/
+
+/*{{{ analogs*/
+	for(c_i = 0; true; c_i++) {
+		if(available_analog_axes == 0) {
+			std::cout << "No more analog axes available, continuing" << std::endl;
+			break;
+		}
+		c_stage = (stage){2, 0};
+		std::cout << "Press C to add an analog input or space to continue" << std::endl;
+		do { c = getchar(); std::cout << "\r\033[K"; } while(c != 'c' && c != 'C' && c != ' ');
+		if(c == ' ') break;
+
+	/*{{{ identify*/
+		c_mut.lock(); memset(c_axis, 0, sizeof(c_axis)); c_mut.unlock();
+		std::cout << "Spam to identify it" << std::endl;
+		c_stage = (stage){c_stage.load().a, c_stage.load().b+1};
+		calibrate_continue_sem.acquire();
+		cal->analogs[c_i].code = std::max_element(std::begin(c_axis), std::end(c_axis))-c_axis;
+		c_axis[cal->analogs[c_i].code] = 0;
+	/*}}}*/
+
+	/*{{{ get max*/
+		c_mut.lock();
+		c_stage = (stage){c_stage.load().a, c_stage.load().b+1};
+		// clearing in case calibration_event did it twice
+		calibrate_continue_sem.try_acquire();
+		c_mut.unlock();
+		std::cout << "Move to the positive end of the input and press any key" << std::endl;
+		getchar(); std::cout << "\r\033[K";
+		cal->analogs[c_i].plus_scale = c_axis[cal->analogs[c_i].code];
+	/*}}}*/
+
+	/*{{{ get right*/
+		std::cout << "Move to the negative end of the input if there is one else at rest and press any key" << std::endl;
+		getchar(); std::cout << "\r\033[K";
+		cal->analogs[c_i].minus_scale = c_axis[cal->analogs[c_i].code];
+	/*}}}*/
+
+	/*{{{ get center and calculate scales*/
+		std::cout << "Put the input at rest and press any key" << std::endl;
+		getchar(); std::cout << "\r\033[K";
+		cal->analogs[c_i].center = c_axis[cal->analogs[c_i].code];
+		bool invert = cal->analogs[c_i].plus_scale-cal->analogs[c_i].center < 0;
+		cal->analogs[c_i].plus_scale = 1/(cal->analogs[c_i].plus_scale-cal->analogs[c_i].center);
+		if(fabs(cal->analogs[c_i].minus_scale-cal->analogs[c_i].center) > 0.1*fabs(1/cal->analogs[c_i].plus_scale))
+			cal->analogs[c_i].minus_scale = -1/(cal->analogs[c_i].minus_scale-cal->analogs[c_i].center);
+		else cal->analogs[c_i].minus_scale = cal->analogs[c_i].plus_scale;
+		if(invert) std::swap(cal->analogs[c_i].plus_scale, cal->analogs[c_i].minus_scale);
+	/*}}}*/
+
+		c_stage = (stage){c_stage.load().a, c_stage.load().b+1};
+		std::cout << "Check the input below and press D to discard or space to continue" << std::endl;
+		c_mut.unlock();
+		do { c = getchar(); std::cout << "\r\033[K"; } while(c != 'd' && c != 'D' && c != ' ');
+		if(c == 'd' || c == 'D') c_i--;
+		else {
+			cal->analogs[c_i].present = true;
+			available_analog_axes--;
+		}
+		c_stage = (stage){c_stage.load().a, c_stage.load().b+1};
+		std::cout << "\r\033[K";
+	}
+/*}}}*/
+
 	// TODO: save calibration to file
 	dev->calibration.done = true;
 }
@@ -137,6 +215,8 @@ void calibration_event(device* dev, int type, int code, int value) {
 	stage c_stage = ::c_stage.load();
 	cntlr_calibration* cal = &dev->calibration;
 	switch(c_stage.a) {
+
+/*{{{ analog 2Ds*/
 		case 1: {
 			if(c_stage.b < 4 && type != EV_ABS) break;
 			int min = libevdev_get_abs_minimum(dev->dev, code);
@@ -162,7 +242,7 @@ void calibration_event(device* dev, int type, int code, int value) {
 				case 4:
 					if(type == EV_ABS) {
 
-/*{{{ store c_x and c_y*/
+	/*{{{ store c_x and c_y*/
 						if(code == cal->analog_2ds[c_i].x_code) {
 							c_x = value;
 							c_min_x = std::min(c_min_x, value);
@@ -186,10 +266,10 @@ void calibration_event(device* dev, int type, int code, int value) {
 					}
 					else if(type == EV_SYN && c_updated) {
 
-/*{{{ handle events*/
+	/*{{{ handle events*/
 						if(abs(c_angle_spins) <= 5) {
 
-	/*{{{ get left/right/up/down scales*/
+		/*{{{ get left/right/up/down scales*/
 							if(fabs(c_x) > 1) {
 								if((c_x < 0) ^ (cal->analog_2ds[c_i].xl_scale < 0))
 									cal->analog_2ds[c_i].xl_scale /= fabs(c_x);
@@ -214,7 +294,7 @@ void calibration_event(device* dev, int type, int code, int value) {
 							c_angles[i] = std::max(c_angles[i], sqrt(pow(c_x, 2)+pow(c_y, 2)));
 						}
 
-	/*{{{ c_angle_spins updating and filling c_angles*/
+		/*{{{ c_angle_spins updating and filling c_angles*/
 						if(0.9 < fabs(c_x) && fabs(c_x) < 1.1 && fabs(c_y) < 0.1) {
 							if(c_angle_spins <= 0 && c_x > 0) {
 								c_angle_spins = -c_angle_spins+1;
@@ -228,7 +308,7 @@ void calibration_event(device* dev, int type, int code, int value) {
 								std::cout << c_angle_spins << " of 10-15" << std::endl;
 								if(done || c_angle_spins > 15) {
 
-		/*{{{ fill any remaining holes in c_angles*/
+			/*{{{ fill any remaining holes in c_angles*/
 									int left = 0;
 									if(c_angles[left] == 0) {
 										for(left = C_ANGLES_STEPS-1; left >= 0; left--) {
@@ -267,7 +347,7 @@ void calibration_event(device* dev, int type, int code, int value) {
 				case 5:
 					if(type == EV_ABS) {
 
-/*{{{ store c_x and c_y*/
+	/*{{{ store c_x and c_y*/
 						if(code == cal->analog_2ds[c_i].x_code) {
 							c_x = value-cal->analog_2ds[c_i].center_x;
 							c_x /= (c_x < 0) ? cal->analog_2ds[c_i].center_x-min : max-cal->analog_2ds[c_i].center_x;
@@ -299,6 +379,32 @@ void calibration_event(device* dev, int type, int code, int value) {
 					break;
 			}
 			break; }
+/*}}}*/
+
+/*{{{ analogs*/
+		case 2: {
+			if(type != EV_ABS) break;
+			int min = libevdev_get_abs_minimum(dev->dev, code);
+			int max = libevdev_get_abs_maximum(dev->dev, code);
+			double plusminus_1 = (2*value-(min+max))/(double)(max-min);
+			switch(c_stage.b) {
+				case 1:
+					c_axis[code] += fabs(plusminus_1);
+					if(c_axis[code] > 5)
+						calibrate_continue_sem.release();
+					break;
+				case 2:
+					c_axis[code] = value;
+					break;
+				case 3: {
+					double v = value-cal->analogs[c_i].center;
+					v *= (v >= 0) ? cal->analogs[c_i].plus_scale : cal->analogs[c_i].minus_scale;
+					printf("\r\033[KV: % 2.02lf ", v);
+					break; }
+			}
+			break; }
+/*}}}*/
+
 	}
 	c_mut.unlock();
 }

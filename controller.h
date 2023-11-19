@@ -22,8 +22,8 @@ typedef struct analog_2d {
 typedef struct analog {
 	bool present = false;
 	int code;
-	int base;
-	double scale;
+	int center;
+	double plus_scale, minus_scale;
 } analog;
 
 typedef struct cntlr_calibration {
