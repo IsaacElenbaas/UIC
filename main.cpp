@@ -146,10 +146,9 @@ static void select_device(device* dev, bool optional) {
 			std::string dev_id;
 			int c;
 			while((c = getchar()) != EOF) {
-				if(stopping) return;
 				if(c == '\n') {
 					if(dev_id.size() > 0) break;
-					std::cout << "\033[A\033[KDevice [0-" << dev_count << "]: ";
+					std::cout << "\033[A\r\033[KDevice [0-" << dev_count << "]: ";
 					continue;
 				}
 				else if(c == '\033' && optional) {
@@ -179,14 +178,14 @@ static void select_device(device* dev, bool optional) {
 			if(c == EOF) exit(1);
 			else if(refresh) break;
 			if((dev->fd = open(("/dev/input/event" + dev_id).c_str(), O_RDONLY)) == -1) {
-				std::cerr << "\033[A\033[KFailed to open device " << dev_id << "!" << std::endl;
+				std::cerr << "\033[A\r\033[KFailed to open device " << dev_id << "!" << std::endl;
 				continue; }
 			max_fd = std::max(max_fd, dev->fd);
 			if(ioctl(dev->fd, EVIOCGRAB, 1) < 0) {
-				std::cerr << "\033[A\033[KFailed to get device " << dev_id << " exclusively!" << std::endl;
+				std::cerr << "\033[A\r\033[KFailed to get device " << dev_id << " exclusively!" << std::endl;
 				close(dev->fd); dev->fd = -1; continue; }
 			if(libevdev_new_from_fd(dev->fd, &dev->dev) != 0) {
-				std::cerr << "\033[A\033[KFailed to load device " << dev_id << " through evdev!" << std::endl;
+				std::cerr << "\033[A\r\033[KFailed to load device " << dev_id << " through evdev!" << std::endl;
 				ioctl(dev->fd, EVIOCGRAB, 0);
 				close(dev->fd);
 				continue; }
