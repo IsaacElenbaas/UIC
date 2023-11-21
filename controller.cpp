@@ -3,9 +3,11 @@
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
+#include <forward_list>
 #include <iostream>
 #include <libevdev/libevdev.h>
 #include <limits>
+#include <linux/uinput.h>
 #include <mutex>
 #include <semaphore>
 #include <unistd.h>
@@ -13,19 +15,21 @@
 
 #define C_ANGLES_STEPS 100
 
+extern std::forward_list<std::forward_list<input>> inputs;
+
 /*{{{ calibration*/
 	/*{{{ void calibration_save/load(device* dev)*/
 void calibration_save(device* dev) {
 	int max_analog_2ds, max_analogs, max_buttons;
 
 		/*{{{ get max values*/
-	for(max_analog_2ds = 0; max_analog_2ds < CNTLR_MAX_ANALOG_2D; max_analog_2ds++) {
+	for(max_analog_2ds = 0; max_analog_2ds < CNTLR_MAX_ANALOG_2DS; max_analog_2ds++) {
 		if(!dev->calibration.analog_2ds[max_analog_2ds].present) break;
 	}
-	for(max_analogs = 0; max_analogs < CNTLR_MAX_ANALOG_2D; max_analogs++) {
+	for(max_analogs = 0; max_analogs < CNTLR_MAX_ANALOGS; max_analogs++) {
 		if(!dev->calibration.analogs[max_analogs].present) break;
 	}
-	for(max_buttons = 0; max_buttons < CNTLR_MAX_ANALOG_2D; max_buttons++) {
+	for(max_buttons = 0; max_buttons < CNTLR_MAX_BUTTONS; max_buttons++) {
 		if(!dev->calibration.buttons[max_buttons].present) break;
 	}
 		/*}}}*/
@@ -45,9 +49,11 @@ void calibration_save(device* dev) {
 		write(fd, &dev->calibration.analog_2ds[i].deadzone,    sizeof(dev->calibration.analog_2ds[i].deadzone));
 		write(fd, &dev->calibration.analog_2ds[i].xl_scale,    sizeof(dev->calibration.analog_2ds[i].xl_scale));
 		write(fd, &dev->calibration.analog_2ds[i].xr_scale,    sizeof(dev->calibration.analog_2ds[i].xr_scale));
+		write(fd, &dev->calibration.analog_2ds[i].yd_scale,    sizeof(dev->calibration.analog_2ds[i].yd_scale));
+		write(fd, &dev->calibration.analog_2ds[i].yu_scale,    sizeof(dev->calibration.analog_2ds[i].yu_scale));
 		write(fd, &dev->calibration.analog_2ds[i].circular,    sizeof(dev->calibration.analog_2ds[i].circular));
 		write(fd, &dev->calibration.analog_2ds[i].q_scales[0], sizeof(dev->calibration.analog_2ds[i].q_scales));
-		write(fd, &dev->calibration.analog_2ds[i].q_scales[0], sizeof(dev->calibration.analog_2ds[i].q_scales));
+		write(fd, &dev->calibration.analog_2ds[i].q_pows[0],   sizeof(dev->calibration.analog_2ds[i].q_pows  ));
 	}
 	for(int i = 0; i < max_analogs; i++) {
 		write(fd, &dev->calibration.analogs[i].type,        sizeof(dev->calibration.analogs[i].type       ));
@@ -87,9 +93,11 @@ void calibration_load(device* dev) {
 		read(fd, &dev->calibration.analog_2ds[i].deadzone,    sizeof(dev->calibration.analog_2ds[i].deadzone));
 		read(fd, &dev->calibration.analog_2ds[i].xl_scale,    sizeof(dev->calibration.analog_2ds[i].xl_scale));
 		read(fd, &dev->calibration.analog_2ds[i].xr_scale,    sizeof(dev->calibration.analog_2ds[i].xr_scale));
+		read(fd, &dev->calibration.analog_2ds[i].yd_scale,    sizeof(dev->calibration.analog_2ds[i].yd_scale));
+		read(fd, &dev->calibration.analog_2ds[i].yu_scale,    sizeof(dev->calibration.analog_2ds[i].yu_scale));
 		read(fd, &dev->calibration.analog_2ds[i].circular,    sizeof(dev->calibration.analog_2ds[i].circular));
 		read(fd, &dev->calibration.analog_2ds[i].q_scales[0], sizeof(dev->calibration.analog_2ds[i].q_scales));
-		read(fd, &dev->calibration.analog_2ds[i].q_scales[0], sizeof(dev->calibration.analog_2ds[i].q_scales));
+		read(fd, &dev->calibration.analog_2ds[i].q_pows[0],   sizeof(dev->calibration.analog_2ds[i].q_pows  ));
 	}
 	for(int i = 0; i < max_analogs; i++) {
 		dev->calibration.analogs[i].present = true;
@@ -142,16 +150,17 @@ void assign_type(int* input_type, int* input_side) {
  2: Select\n\
  3: Home\n\
  4: Bumper\n\
- 5: Trigger (Digital)\n\
- 6: D-pad Up\n\
- 7: D-pad Down\n\
- 8: D-pad Left\n\
- 9: D-pad Right\n\
-10: Face Up\n\
-11: Face Down\n\
-12: Face Left\n\
-13: Face Right\n\
-14: Other / Extra\n\
+ 5: Trigger Button\n\
+ 6: Thumb Button\n\
+ 7: D-pad Up\n\
+ 8: D-pad Down\n\
+ 9: D-pad Left\n\
+10: D-pad Right\n\
+11: Face Up\n\
+12: Face Down\n\
+13: Face Left\n\
+14: Face Right\n\
+15: Other / Extra\n\
 ";
 		/*}}}*/
 
@@ -216,17 +225,17 @@ static std::atomic<int> c_last_button;
 
 void calibrate(device* dev) {
 	calibration_load(dev);
-	if(dev->calibration.done) return;
 	cntlr_calibration* cal = &dev->calibration;
+	if(!dev->calibration.done) {
 	// TODO: needs to handle ctrl+c and input disconnecting
 	char c;
-	int available_analog_axes = CNTLR_MAX_ANALOG;
+	int available_axes = CNTLR_MAX_ANALOGS;
 
 	// TODO: gyro
 
 	/*{{{ analog 2Ds*/
 	for(c_i = 0; true; c_i++) {
-		if(available_analog_axes < 2) {
+		if(available_axes < 2) {
 			std::cout << "Not enough analog axes available, continuing" << std::endl;
 			break;
 		}
@@ -331,18 +340,26 @@ void calibrate(device* dev) {
 		do { c = getchar(); std::cout << "\r\033[K"; } while(c != 'd' && c != 'D' && c != ' ');
 		if(c == 'd' || c == 'D') c_i--;
 		else {
+			int min = libevdev_get_abs_minimum(dev->dev, cal->analog_2ds[c_i].x_code);
+			int max = libevdev_get_abs_maximum(dev->dev, cal->analog_2ds[c_i].x_code);
+			cal->analog_2ds[c_i].xl_scale /= cal->analog_2ds[c_i].center_x-min;
+			cal->analog_2ds[c_i].xr_scale /= max-cal->analog_2ds[c_i].center_x;
+			min = libevdev_get_abs_minimum(dev->dev, cal->analog_2ds[c_i].y_code);
+			max = libevdev_get_abs_maximum(dev->dev, cal->analog_2ds[c_i].y_code);
+			cal->analog_2ds[c_i].yd_scale /= cal->analog_2ds[c_i].center_y-min;
+			cal->analog_2ds[c_i].yu_scale /= max-cal->analog_2ds[c_i].center_y;
 			cal->analog_2ds[c_i].present = true;
+			c_stage = (stage){c_stage.load().a, c_stage.load().b+1};
 			assign_type((int*)&cal->analog_2ds[c_i].type, &cal->analog_2ds[c_i].side);
-			available_analog_axes -= 2;
+			available_axes -= 2;
 		}
-		c_stage = (stage){c_stage.load().a, c_stage.load().b+1};
 		std::cout << "\r\033[K";
 	}
 	/*}}}*/
 
 	/*{{{ analogs*/
 	for(c_i = 0; true; c_i++) {
-		if(available_analog_axes == 0) {
+		if(available_axes == 0) {
 			std::cout << "No more analog axes available, continuing" << std::endl;
 			break;
 		}
@@ -400,10 +417,10 @@ void calibrate(device* dev) {
 		if(c == 'd' || c == 'D') c_i--;
 		else {
 			cal->analogs[c_i].present = true;
+			c_stage = (stage){c_stage.load().a, c_stage.load().b+1};
 			assign_type((int*)&cal->analogs[c_i].type, &cal->analogs[c_i].side);
-			available_analog_axes--;
+			available_axes--;
 		}
-		c_stage = (stage){c_stage.load().a, c_stage.load().b+1};
 		std::cout << "\r\033[K";
 	}
 	/*}}}*/
@@ -422,18 +439,56 @@ void calibrate(device* dev) {
 		if(c == 'd' || c == 'D') c_i--;
 		else {
 			cal->buttons[c_i].present = true;
+			c_stage = (stage){c_stage.load().a, c_stage.load().b+1};
 			assign_type((int*)&cal->buttons[c_i].type, &cal->buttons[c_i].side);
 			cal->buttons[c_i].code = c_last_button;
 		}
-		c_stage = (stage){c_stage.load().a, c_stage.load().b+1};
 		std::cout << "\r\033[K";
 		/*}}}*/
 
 	}
 	/*}}}*/
 
+	c_stage = (stage){0, 0};
 	calibration_save(dev);
-	dev->calibration.done = true;
+	}
+
+	/*{{{ set up inputs*/
+	std::forward_list<input>& inputs = ::inputs.emplace_front();
+	for(int i = 0; i < CNTLR_MAX_ANALOG_2DS && cal->analog_2ds[i].present; i++) {
+		input& add = inputs.emplace_front();
+		cal->analog_2ds[i].out = &add;
+		add.physical = true;
+		add.digital = false;
+		add.axes = 2;
+		add.calibration = &cal->analog_2ds[i];
+		add.side = cal->analog_2ds[i].side;
+		add.circular = cal->analog_2ds[i].circular;
+		add.hash = (uintptr_t)add.calibration;
+	}
+	for(int i = 0; i < CNTLR_MAX_ANALOGS && cal->analogs[i].present; i++) {
+		input& add = inputs.emplace_front();
+		cal->analogs[i].out = &add;
+		add.physical = true;
+		add.digital = false;
+		add.axes = 1;
+		add.calibration = &cal->analogs[i];
+		add.side = cal->analogs[i].side;
+		add.hash = (uintptr_t)add.calibration;
+	}
+	for(int i = 0; i < CNTLR_MAX_BUTTONS && cal->buttons[i].present; i++) {
+		input& add = inputs.emplace_front();
+		cal->buttons[i].out = &add;
+		add.physical = true;
+		add.digital = true;
+		add.axes = 1;
+		add.calibration = &cal->buttons[i];
+		add.side = cal->buttons[i].side;
+		add.hash = (uintptr_t)add.calibration;
+	}
+	/*}}}*/
+
+	cal->done = true;
 }
 void calibration_event(device* dev, int type, int code, int value) {
 	c_mut.lock();
@@ -646,3 +701,211 @@ void calibration_event(device* dev, int type, int code, int value) {
 	c_mut.unlock();
 }
 /*}}}*/
+
+int Controller::add_button(int code) {
+	if(available_buttons > 0) {
+		inputs_vec.emplace(inputs_vec.begin());
+		inputs_vec[0].digital = true;
+		codes.insert(codes.begin(), (decltype(codes)::value_type){code, 0});
+		// TODO: init button
+		available_buttons--;
+		extra_buttons++;
+	}
+	else return -1;
+	return CNTLR_INPUT_MAX+extra_buttons+extra_analogs+extra_analog_2ds-1;
+}
+int Controller::add_analog(int code) {
+	if(available_axes > 0) {
+		inputs_vec.emplace(inputs_vec.begin());
+		inputs_vec[0].digital = false;
+		inputs_vec[0].axes = 1;
+		codes.insert(codes.begin(), (decltype(codes)::value_type){code, 0});
+		// TODO: init axis
+		available_axes--;
+		extra_analogs++;
+	}
+	else return -1;
+	return CNTLR_INPUT_MAX+extra_buttons+extra_analogs+extra_analog_2ds-1;
+}
+int Controller::add_analog_2d(int x_code, int y_code) {
+	if(available_axes > 0) {
+		inputs_vec.emplace(inputs_vec.begin());
+		inputs_vec[0].digital = false;
+		inputs_vec[0].axes = 2;
+		codes.insert(codes.begin(), (decltype(codes)::value_type){x_code, y_code});
+		// TODO: init axes
+		available_axes -= 2;
+		extra_analog_2ds++;
+	}
+	else return -1;
+	return CNTLR_INPUT_MAX+extra_buttons+extra_analogs+extra_analog_2ds-1;
+}
+static void init_abs(int fd, int code, int min, int max) {
+	ioctl(fd, UI_SET_ABSBIT, code);
+	struct uinput_abs_setup setup = {
+		.code = (unsigned short)code,
+		.absinfo = {
+			.value = 0,
+			.minimum = min,
+			.maximum = max,
+			.fuzz = 0, .flat = 0, .resolution = 0
+		}
+	};
+	ioctl(fd, UI_ABS_SETUP, &setup);
+}
+void Controller::init() {
+	auto i = inputs_vec.begin();
+	auto c = codes.begin();
+	i = inputs_vec.emplace(i);
+	(*i).digital = false;
+	(*i).axes = 2;
+	c = codes.insert(c, (decltype(codes)::value_type){ABS_HAT0X, ABS_HAT0Y});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = false;
+	(*i).axes = 2;
+	c = codes.insert(++c, (decltype(codes)::value_type){ABS_X, ABS_Y});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = false;
+	(*i).axes = 2;
+	c = codes.insert(++c, (decltype(codes)::value_type){ABS_RY, ABS_GAS});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = false;
+	(*i).axes = 1;
+	c = codes.insert(++c, (decltype(codes)::value_type){ABS_RX, 0});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = false;
+	(*i).axes = 1;
+	c = codes.insert(++c, (decltype(codes)::value_type){ABS_BRAKE, 0});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = true;
+	c = codes.insert(++c, (decltype(codes)::value_type){BTN_TR2, 0});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = true;
+	c = codes.insert(++c, (decltype(codes)::value_type){BTN_TL2, 0});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = true;
+	c = codes.insert(++c, (decltype(codes)::value_type){-1/*BTN_MODE*/, 0});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = true;
+	c = codes.insert(++c, (decltype(codes)::value_type){BTN_TL, 0});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = true;
+	c = codes.insert(++c, (decltype(codes)::value_type){BTN_TR, 0});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = true;
+	c = codes.insert(++c, (decltype(codes)::value_type){BTN_TL2, 0});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = true;
+	c = codes.insert(++c, (decltype(codes)::value_type){BTN_TR2, 0});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = true;
+	c = codes.insert(++c, (decltype(codes)::value_type){BTN_THUMBL, 0});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = true;
+	c = codes.insert(++c, (decltype(codes)::value_type){BTN_THUMBR, 0});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = true;
+	c = codes.insert(++c, (decltype(codes)::value_type){BTN_Y, 0});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = true;
+	c = codes.insert(++c, (decltype(codes)::value_type){BTN_A, 0});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = true;
+	c = codes.insert(++c, (decltype(codes)::value_type){BTN_B, 0});
+	i = inputs_vec.emplace(++i);
+	(*i).digital = true;
+	c = codes.insert(++c, (decltype(codes)::value_type){BTN_X, 0});
+	last_inputs_vec = decltype(inputs_vec)(inputs_vec);
+	inputs = inputs_vec.data();
+
+	bool xbox = extra_buttons+extra_analogs+extra_analog_2ds == 0;
+	fd = open("/dev/uinput", O_WRONLY);
+	ioctl(fd, UI_SET_EVBIT, EV_KEY); // enable button handling
+	ioctl(fd, UI_SET_KEYBIT, BTN_TR2);
+	ioctl(fd, UI_SET_KEYBIT, BTN_TL2);
+	//ioctl(fd, UI_SET_KEYBIT, BTN_MODE);
+	ioctl(fd, UI_SET_KEYBIT, BTN_TL);
+	ioctl(fd, UI_SET_KEYBIT, BTN_TR);
+	ioctl(fd, UI_SET_KEYBIT, BTN_THUMBL);
+	ioctl(fd, UI_SET_KEYBIT, BTN_THUMBR);
+	ioctl(fd, UI_SET_KEYBIT, BTN_Y); // called C sometimes
+	ioctl(fd, UI_SET_KEYBIT, BTN_A);
+	ioctl(fd, UI_SET_KEYBIT, BTN_B);
+	ioctl(fd, UI_SET_KEYBIT, BTN_X);
+
+	ioctl(fd, UI_SET_EVBIT, EV_ABS); // enable absolute analog handling
+	init_abs(fd, ABS_HAT0X, -1, 1);
+	init_abs(fd, ABS_HAT0Y, -1, 1);
+	init_abs(fd, ABS_X,   -32768, 32767);
+	init_abs(fd, ABS_Y,   -32768, 32767);
+	init_abs(fd, ABS_RY,  -32768, 32767);
+	init_abs(fd, ABS_GAS, -32768, 32767);
+	init_abs(fd, ABS_RX,    0, 1023);
+	init_abs(fd, ABS_BRAKE, 0, 1023);
+
+	struct uinput_setup setup = {
+		.id = {
+			.bustype = BUS_USB,
+			.vendor  = (unsigned short)((xbox) ? 0x045E : 0x0001),
+			.product = (unsigned short)((xbox) ? 0x02D1 : 0x0001),
+			.version = (unsigned short)((xbox) ? 0xAB00 : 0x0001),
+		},
+		.name = "Xbox One Controller",
+		.ff_effects_max = 0
+	};
+	const char name[] = "UIT Controller";
+	if(!xbox) strcpy(setup.name, name);
+
+	ioctl(fd, UI_DEV_SETUP, &setup);
+	ioctl(fd, UI_DEV_CREATE);
+}
+void Controller::reset() {
+	// TODO: reset all inputs to 0
+	inputs_vec.clear();
+	last_inputs_vec.clear();
+	codes.clear();
+	if(fd != -1) {
+		ioctl(fd, UI_DEV_DESTROY);
+		close(fd);
+		fd = -1;
+	}
+}
+void Controller::apply() {
+	// TODO: need thread-safe guard on this
+	std::vector<struct input_event> events;
+	for(size_t i = 0; i < inputs_vec.size(); i++) {
+		int axes = (inputs_vec[i].digital) ? 1 : inputs_vec[i].axes;
+		for(int a = 0; a < axes; a++) {
+			if(inputs_vec[i].values[a] != last_inputs_vec[i].values[a]) {
+				if(codes[i][a] < 0) continue;
+				events.emplace(events.end());
+				events[events.size()-1].type = (inputs_vec[i].digital) ? EV_KEY : EV_ABS;
+				events[events.size()-1].code = codes[i][a];
+				if(inputs_vec[i].digital)
+					events[events.size()-1].value = inputs_vec[i].values[a];
+				else switch(codes[i][a]) {
+					case ABS_HAT0X:
+					case ABS_HAT0Y:
+						events[events.size()-1].value = std::round(inputs_vec[i].values[a]);
+						break;
+					case ABS_BRAKE:
+					case ABS_RX:
+						events[events.size()-1].value = std::round(1023*inputs_vec[i].values[a]);
+						break;
+					default:
+						events[events.size()-1].value = std::round(32767*inputs_vec[i].values[a]);
+				}
+			}
+		}
+	}
+
+	if(!events.empty()) {
+		events.emplace(events.end());
+		events[events.size()-1].type = EV_SYN;
+		events[events.size()-1].code = SYN_REPORT;
+		events[events.size()-1].value = 0;
+		write(fd, events.data(), events.size()*sizeof(decltype(events)::value_type));
+	}
+	std::swap(inputs_vec, last_inputs_vec);
+	inputs = inputs_vec.data();
+}

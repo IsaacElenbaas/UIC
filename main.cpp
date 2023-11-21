@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <fcntl.h>
 #include <filesystem>
+#include <forward_list>
 #include <future>
 #include <iostream>
 #include <limits>
@@ -20,16 +21,20 @@
 #include <utility>
 #include "controller.h"
 #include "main.h"
+#include "user.h"
 /*}}}*/
 
-std::list<device> devices;
+static std::list<device> devices;
+static std::counting_semaphore inputs_sem{0};
+std::forward_list<std::forward_list<input>> inputs;
+std::forward_list<std::forward_list<input>> user_inputs;
 double elapsed = 0;
 
-std::atomic<bool> stopping = false;
-static int max_fd = 0;
+static std::atomic<bool> stopping = false;
 static void signal(int signum) {
 	std::cout << "\r\033[KSubmit an input on each device you used that is still connected to exit" << std::endl;
 	stopping = true;
+	user_stop();
 	close(STDIN_FILENO);
 	// unfortunately closing evdev device FDs or freeing the device objects does not interrupt next_event
 }
@@ -121,9 +126,19 @@ static void clock_thread() {
 }
 /*}}}*/
 
+/*{{{ void process_frame()*/
 static void process_frame() {
-	std::cout << "process_frame" << std::endl;
+	size_t locks;
+	for(locks = 0; locks < devices.size(); locks++) { inputs_sem.acquire(); }
+	for(auto a = inputs.begin(), b = user_inputs.begin(); a != inputs.end(); ++a, ++b) {
+		for(auto aa = (*a).begin(), bb = (*b).begin(); aa != (*a).end(); ++aa, ++bb) {
+			*bb = *aa;
+		}
+	}
+	user_process_frame();
+	for(size_t i = 0; i < locks; i++) { inputs_sem.release(); }
 }
+/*}}}*/
 
 /*{{{ void select_device(device* dev, bool optional)*/
 static void select_device(device* dev, bool optional) {
@@ -158,6 +173,7 @@ static void select_device(device* dev, bool optional) {
 				else if(c == 'r' || c == 'R') {
 					dev_id.clear();
 					refresh = true;
+					std::cout << std::endl;
 					break;
 				}
 				else if(c == '\177') {
@@ -175,12 +191,12 @@ static void select_device(device* dev, bool optional) {
 				}
 				dev_id += c;
 			}
+			// TODO
 			if(c == EOF) exit(1);
 			else if(refresh) break;
 			if((dev->fd = open(("/dev/input/event" + dev_id).c_str(), O_RDONLY)) == -1) {
 				std::cerr << "\033[A\r\033[KFailed to open device " << dev_id << "!" << std::endl;
 				continue; }
-			max_fd = std::max(max_fd, dev->fd);
 			if(ioctl(dev->fd, EVIOCGRAB, 1) < 0) {
 				std::cerr << "\033[A\r\033[KFailed to get device " << dev_id << " exclusively!" << std::endl;
 				close(dev->fd); dev->fd = -1; continue; }
@@ -200,6 +216,7 @@ static std::binary_semaphore device_thread_exit_sem{1};
 static std::atomic<bool> device_thread_exited;
 static std::thread::id device_thread_exit;
 static void device_thread(device* dev) {
+	inputs_sem.release();
 	while(true) {
 		struct input_event ev;
 		int rc = libevdev_next_event(dev->dev, LIBEVDEV_READ_FLAG_NORMAL, &ev);
@@ -214,11 +231,6 @@ static void device_thread(device* dev) {
 		// May want to implement MSCs for if games try to get raw or something, but shouldn't need to interpret them
 		// type 4 (EV_MSC), code 4 (MSC_SCAN), value 90003
 		// type 1 (EV_KEY), code 290 (BTN_THUMB2), value 0
-
-		// EV_KEY       0x01
-		// EV_REL       0x02
-		// EV_ABS       0x03
-		//   libevdev_get_abs_minimum/maximum(dev, code)
 		// XInput supports 8-direction D-pad, 2 triggers, 10 buttons, 4 axes (thumbsticks)
 		// DirectInput supports POV (hat switch, overlapping 4-direction d-pad), 128 buttons, 8 axes
 		if(!dev->calibration.done)
@@ -226,11 +238,69 @@ static void device_thread(device* dev) {
 		else {
 			switch(ev.type) {
 				case EV_KEY:
+					for(int i = 0; i < CNTLR_MAX_BUTTONS; i++) {
+						if(!dev->calibration.buttons[i].present) break;
+						if(dev->calibration.buttons[i].code == ev.code) {
+							inputs_sem.acquire();
+							dev->calibration.buttons[i].out->values[0] = ev.value;
+							inputs_sem.release();
+						}
+					}
+					break;
 				//case EV_REL:
 				case EV_ABS:
-					std::cout << "Event type: " << ev.type << ", code: " << ev.code << ", value: " << ev.value << std::endl;
+					for(int i = 0; i < CNTLR_MAX_ANALOGS; i++) {
+						if(!dev->calibration.analogs[i].present) break;
+						if(dev->calibration.analogs[i].code == ev.code) {
+							inputs_sem.acquire();
+							double* value = &dev->calibration.analogs[i].out->values[0];
+							*value = ev.value-dev->calibration.analogs[i].center;
+							*value *= (*value >= 0) ? dev->calibration.analogs[i].plus_scale : dev->calibration.analogs[i].minus_scale;
+							inputs_sem.release();
+						}
+					}
+					for(int i = 0; i < CNTLR_MAX_ANALOG_2DS; i++) {
+						if(!dev->calibration.analog_2ds[i].present) break;
+						if(dev->calibration.analog_2ds[i].x_code == ev.code) {
+							dev->calibration.analog_2ds[i].updated = true;
+							dev->calibration.analog_2ds[i].raw_x = ev.value;
+						}
+						if(dev->calibration.analog_2ds[i].y_code == ev.code) {
+							dev->calibration.analog_2ds[i].updated = true;
+							dev->calibration.analog_2ds[i].raw_y = ev.value;
+						}
+					}
 					break;
 				case EV_SYN:
+					inputs_sem.acquire();
+					for(int i = 0; i < CNTLR_MAX_ANALOG_2DS; i++) {
+						if(dev->calibration.analog_2ds[i].updated) {
+							double x = dev->calibration.analog_2ds[i].raw_x, y = dev->calibration.analog_2ds[i].raw_y;
+							x -= dev->calibration.analog_2ds[i].center_x;
+							y -= dev->calibration.analog_2ds[i].center_y;
+							if(x < 0)
+								x *= dev->calibration.analog_2ds[i].xl_scale;
+							else
+								x *= dev->calibration.analog_2ds[i].xr_scale;
+							if(y < 0)
+								y *= dev->calibration.analog_2ds[i].yd_scale;
+							else
+								y *= dev->calibration.analog_2ds[i].yu_scale;
+							double angle = atan2(y, x);
+							if(angle < 0) angle += 2*M_PI;
+							double q_progress = angle;
+							while(q_progress > M_PI/2) { q_progress -= M_PI/2; }
+							q_progress /= M_PI/2;
+							int q = (int)(angle/(M_PI/2));
+							double scale = dev->calibration.analog_2ds[i].q_scales[q];
+							scale = 1+std::min(1.0, cos(M_PI*pow(fabs(2*q_progress-1), dev->calibration.analog_2ds[i].q_pows[q]))+1)*(scale-1);
+							x *= scale; y *= scale;
+							dev->calibration.analog_2ds[i].out->values[0] = x;
+							dev->calibration.analog_2ds[i].out->values[1] = -y;
+							dev->calibration.analog_2ds[i].updated = false;
+						}
+					}
+					inputs_sem.release();
 					clock_mut.lock();
 					if(clock_interrupt_sem.try_acquire()) {
 						clock_timer_promise->set_value();
@@ -249,6 +319,7 @@ static void device_thread(device* dev) {
 	libevdev_free(dev->dev);
 	ioctl(dev->fd, EVIOCGRAB, 0);
 	close(dev->fd);
+	inputs_sem.acquire();
 	device_thread_exit_sem.acquire();
 	device_thread_exit = std::this_thread::get_id();
 	device_thread_exited = true;
@@ -297,6 +368,11 @@ int main() {
 	calibrate(dev);
 	/*}}}*/
 
+	// can only do this before user_switch_profile is called, it stores pointers
+	// TODO: don't do these things here anyway
+	user_inputs = decltype(inputs)(inputs);
+	user_switch_profile(0, &user_inputs);
+
 	/*{{{ TUI*/
 	fd_set select_stdin;
 	FD_ZERO(&select_stdin);
@@ -327,17 +403,13 @@ int main() {
 			device_threads.erase(device_thread_exit);
 			device_thread_exited = false;
 			device_thread_exit_sem.release();
+			if(!stopping) {
+				std::cout << "A hooked device was disconnected - exiting!" << std::endl;
+				signal(SIGINT);
+			}
 			if(device_threads.empty()) {
-				if(stopping) break;
-				else {
-					std::cout << "All devices were disconnected!" << std::endl;
-					dev = &devices.emplace_back();
-					select_device(dev, false);
-					if(dev->fd == -1) break;
-					std::thread dev_thread(device_thread, dev);
-					std::thread::id device_thread_id = dev_thread.get_id();
-					device_threads[device_thread_id] = {std::move(dev_thread), dev};
-				}
+				std::cout << "All devices were unhooked successfully" << std::endl;
+				break;
 			}
 		}
 		/*}}}*/
