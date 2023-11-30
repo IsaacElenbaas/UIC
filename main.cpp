@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <fcntl.h>
 #include <filesystem>
@@ -14,7 +15,6 @@
 #include <map>
 #include <mutex>
 #include <semaphore>
-#include <set>
 #include <termios.h>
 #include <thread>
 #include <unistd.h>
@@ -32,6 +32,7 @@ double elapsed = 0;
 
 static std::atomic<bool> stopping = false;
 static void signal(int signum) {
+	(void)signum;
 	std::cout << "\r\033[KSubmit an input on each device you used that is still connected to exit" << std::endl;
 	stopping = true;
 	user_stop();
@@ -40,17 +41,19 @@ static void signal(int signum) {
 }
 
 /*{{{ void push/pop_timer(input_t input, int time_ms, bool repeat)*/
-static std::multiset<std::tuple<int, int, input_t>> clock_timers;
+static std::forward_list<std::tuple<double, double, uintptr_t>> clock_timers;
 
-void push_timer(input_t input, int time_ms, bool repeat) {
-	clock_timers.insert({0, ((repeat) ? 1 : -1)*abs(time_ms), input});
+void push_timer(uintptr_t hash, double time_ms, bool repeat) {
+	clock_timers.push_front({hash, ((repeat) ? 1 : -1)*abs(time_ms), 0});
 }
 
-void pop_timer(input_t input, int time_ms, bool repeat) {
+void pop_timer(uintptr_t hash, double time_ms, bool repeat) {
 	time_ms = ((repeat) ? 1 : -1)*abs(time_ms);
-	for(auto i = clock_timers.begin(); i != clock_timers.end(); ++i) {
-		if(std::get<2>(*i) == input && std::get<1>(*i) == time_ms) {
-			clock_timers.erase(i);
+	for(auto i = clock_timers.begin(), last = clock_timers.before_begin(); i != clock_timers.end(); last = i++) {
+		if(std::get<0>(*i) == hash && (
+			std::get<1>(*i) == time_ms || time_ms == -1
+		)) {
+			clock_timers.erase_after(last);
 			break;
 		}
 	}
@@ -85,7 +88,7 @@ static void clock_thread() {
 		if(!clock_interrupt_later) {
 			clock_mut.unlock();
 			for(auto i = clock_timers.begin(); i != clock_timers.end(); ++i) {
-				sleep = std::min(sleep, (int)std::round(std::get<1>(*i)-std::get<0>(*i)));
+				sleep = std::min(sleep, (int)std::round(abs(std::get<1>(*i))-std::get<2>(*i)));
 			}
 			// account for time spent in process_frame and average error
 			sleep = std::max(0.0, sleep-round(((std::chrono::duration<double, std::milli>)(std::chrono::high_resolution_clock::now()-last)).count()+error));
@@ -104,19 +107,22 @@ static void clock_thread() {
 		if(stopping) break;
 		auto now = std::chrono::high_resolution_clock::now();
 		elapsed = ((std::chrono::duration<double, std::milli>)(now-last)).count();
-		int elapsed_int = std::round(elapsed);
+		// things expecting to fire because of their timer should always do so
+		if(status == std::future_status::timeout && sleep != std::numeric_limits<int>::max())
+			elapsed = std::max(elapsed, sleep+0.1);
 		last = now;
-		decltype(clock_timers) new_clock_timers;
-		for(auto i = clock_timers.begin(); i != clock_timers.end(); ++i) {
-			auto new_timer = *i;
-			std::get<0>(new_timer) += elapsed_int;
-			if(std::get<0>(new_timer) >= abs(std::get<1>(new_timer))) {
-				if(std::get<1>(new_timer) > 0) std::get<0>(new_timer) %= std::get<1>(new_timer);
-				if(std::get<1>(*i) >= 0) new_clock_timers.insert(new_timer);
+		for(auto i = clock_timers.begin(), last = clock_timers.before_begin(); i != clock_timers.end(); last = i++) {
+			std::get<2>(*i) += elapsed;
+			if(std::get<2>(*i) >= abs(std::get<1>(*i))) {
+				if(std::get<1>(*i) > 0) {
+					while(std::get<2>(*i) > std::get<1>(*i)) {
+						std::get<2>(*i) -= std::get<1>(*i);
+					}
+				}
+				else if(std::get<1>(*i) < 0)
+					clock_timers.erase_after(i = last);
 			}
-			else new_clock_timers.insert(new_timer);
 		}
-		clock_timers = new_clock_timers;
 		if(status == std::future_status::timeout)
 			error = error/(CLOCK_ERROR_HISTORY-1)+std::max(0.0, elapsed-sleep)/CLOCK_ERROR_HISTORY;
 		process_frame();
@@ -127,7 +133,9 @@ static void clock_thread() {
 /*}}}*/
 
 /*{{{ void process_frame()*/
+extern void trigger_timeouts();
 static void process_frame() {
+	trigger_timeouts();
 	size_t locks;
 	for(locks = 0; locks < devices.size(); locks++) { inputs_sem.acquire(); }
 	for(auto a = inputs.begin(), b = user_inputs.begin(); a != inputs.end(); ++a, ++b) {

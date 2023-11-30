@@ -4,12 +4,12 @@
 #include <forward_list>
 #include "user.h"
 
-typedef struct cntlr_calibration {
+struct cntlr_calibration {
 	std::atomic<bool> done = false;
 	analog_2d_calibrations analog_2ds[CNTLR_MAX_ANALOG_2DS];
 	analog_calibrations analogs[CNTLR_MAX_ANALOGS];
 	button_calibrations buttons[CNTLR_MAX_BUTTONS];
-} cntlr_calibration;
+};
 
 #include "main.h"
 void calibrate(device* dev);

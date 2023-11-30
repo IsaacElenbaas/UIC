@@ -1,5 +1,6 @@
 #ifndef USER_H
 #define USER_H
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <forward_list>
@@ -28,8 +29,8 @@ enum {
 	CNTLR_RTHUMB_BUTTON,
 	CNTLR_Y,
 	CNTLR_A,
-	CNTLR_X,
 	CNTLR_B,
+	CNTLR_X,
 	CNTLR_INPUT_MAX
 };
 
@@ -70,7 +71,8 @@ enum button_type {
 	button_other = 0
 };
 
-typedef struct input {
+class InputTransformation;
+struct input {
 	bool physical = false;
 	// one can deduce the calibration type from these
 	uint_least16_t key = 0;
@@ -81,11 +83,68 @@ typedef struct input {
 	bool circular;
 	double values[3] = {0, 0, 0};
 	// to be used as a key for storing required persistent data
-	// any unchanging parameters should also be relied on
 	uintptr_t hash;
-} input;
+	input& operator=(const input& rhs) {
+		std::copy(rhs.values, &rhs.values[sizeof(values)/sizeof(values[0])-1], values);
+		return *this;
+	}
+	input& operator=(const InputTransformation& rhs);
+};
+class InputTransformation {
+	input* out_input = NULL;
+	void update_out_input() {
+		if(out_input != NULL)
+			std::copy(values, &values[sizeof(values)/sizeof(values[0])-1], out_input->values);
+	}
+protected:
+	uintptr_t _hash;
+	double values[sizeof(((input*)0)->values)/sizeof(((input*)0)->values[0])];
+	InputTransformation() {};
+public:
+	const uintptr_t& hash = _hash;
+	InputTransformation(uintptr_t hash) {
+		_hash = hash;
+		for(int i = 0; i < (int)(sizeof(values)/sizeof(values[0])); i++) {
+			values[i] = 0;
+		}
+	}
+	virtual ~InputTransformation() {};
+	virtual double get(int i) const {
+		return (out_input == NULL)
+			? values[i]
+			: out_input->values[i];
+	};
+	virtual double set(int i, double v) {
+		values[i] = v;
+		if(out_input != NULL) out_input->values[i] = v;
+		return v;
+	};
+	InputTransformation& operator=(const input& rhs) {
+		_hash = rhs.hash;
+		std::copy(rhs.values, &rhs.values[sizeof(values)/sizeof(values[0])-1], values);
+		update_out_input();
+		return *this;
+	};
+	InputTransformation& operator=(const InputTransformation& rhs) {
+		_hash = rhs.hash;
+		for(int i = 0; i < (int)(sizeof(values)/sizeof(values[0])); i++) {
+			values[i] = rhs.get(i);
+		}
+		update_out_input();
+		return *this;
+	};
+	InputTransformation(input* const& rhs) : out_input(rhs) {
+		*this = *rhs;
+	};
+};
+inline input& input::operator=(const InputTransformation& rhs) {
+	for(int i = 0; i < (int)(sizeof(values)/sizeof(values[0])); i++) {
+		values[i] = rhs.get(i);
+	}
+	return *this;
+}
 
-typedef struct analog_2d_calibrations {
+struct analog_2d_calibrations {
 	bool present = false;
 	input* out;
 	analog_2d_type type;
@@ -100,9 +159,9 @@ typedef struct analog_2d_calibrations {
 	// not for use
 	bool updated;
 	int raw_x, raw_y;
-} analog_2d;
+};
 
-typedef struct analog_calibrations {
+struct analog_calibrations {
 	bool present = false;
 	input* out;
 	analog_type type;
@@ -110,15 +169,15 @@ typedef struct analog_calibrations {
 	int code;
 	int center;
 	double plus_scale, minus_scale;
-} analog;
+};
 
-typedef struct button_calibrations {
+struct button_calibrations {
 	bool present = false;
 	input* out;
 	button_type type;
 	int side;
 	int code;
-} button;
+};
 
 // milliseconds since last frame
 extern double elapsed;
@@ -142,6 +201,9 @@ public:
 	void reset();
 	void apply();
 };
+
+void push_timer(uintptr_t hash, double time_ms, bool repeat);
+void pop_timer(uintptr_t hash, double time_ms, bool repeat);
 
 extern void user_print_profiles();
 extern void user_switch_profile(int profile, std::forward_list<std::forward_list<input>>* inputs);

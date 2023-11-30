@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <iostream>
-#include "../user.h"
+#include "user.h"
+#include "util/util.h"
 
 input
 	*DPAD,
@@ -111,11 +112,11 @@ void user_switch_profile(int profile, std::forward_list<std::forward_list<input>
 		i.digital &&
 		((button_calibrations*)i.calibration)->type == button_face_down
 	;}));
-	B = deref(in_con, std::find_if(in_con->begin(), in_con->end(), [](input i) { return
+	X = deref(in_con, std::find_if(in_con->begin(), in_con->end(), [](input i) { return
 		i.digital &&
 		((button_calibrations*)i.calibration)->type == button_face_left
 	;}));
-	X = deref(in_con, std::find_if(in_con->begin(), in_con->end(), [](input i) { return
+	B = deref(in_con, std::find_if(in_con->begin(), in_con->end(), [](input i) { return
 		i.digital &&
 		((button_calibrations*)i.calibration)->type == button_face_right
 	;}));
@@ -141,6 +142,7 @@ void user_process_frame() {
 	if(A               != NULL) con->inputs[CNTLR_A]               = *A;
 	if(X               != NULL) con->inputs[CNTLR_X]               = *X;
 	if(B               != NULL) con->inputs[CNTLR_B]               = *B;
+	//TapDance(B, 1000, {new AutoRelease(500, &con->inputs[CNTLR_B]), new AutoRelease(500, &con->inputs[CNTLR_B])});
 	con->apply();
 }
 

@@ -121,7 +121,7 @@ void calibration_load(device* dev) {
 }
 	/*}}}*/
 
-typedef struct stage { int a, b; } stage;
+struct stage { int a, b; };
 static std::atomic<stage> c_stage = (stage){0, 0};
 
 	/*{{{ void assign_type(int* input_type, int* input_side)*/
@@ -906,6 +906,5 @@ void Controller::apply() {
 		events[events.size()-1].value = 0;
 		write(fd, events.data(), events.size()*sizeof(decltype(events)::value_type));
 	}
-	std::swap(inputs_vec, last_inputs_vec);
-	inputs = inputs_vec.data();
+	for(size_t i = 0; i < inputs_vec.size(); i++) { last_inputs_vec[i] = inputs_vec[i]; }
 }
