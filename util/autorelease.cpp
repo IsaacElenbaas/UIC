@@ -2,32 +2,37 @@
 #include "util.h"
 
 AutoRelease::AutoRelease(double time_ms, const InputTransformation& out_trns) : time_ms(time_ms), out_trns(const_cast<InputTransformation&>(out_trns)) {
-	_hash = trns_hash(TRNS_AUTORELEASE, out_trns, {});
+	_hash = trns_hash(TRNS_AUTO_RELEASE, time_ms, {const_cast<InputTransformation*>(&out_trns)});
 	uintptr_t data = trns_data(hash, sizeof(bool)+sizeof(double));
-	bool* last = (bool*)data; data += sizeof(bool);
+	TRNS_DISCARD_USED();
+	data += sizeof(bool);
 	double* time = (double*)data; data += sizeof(double);
 	*time += elapsed;
-	if(*time >= time_ms) {
-		if(*last) AutoRelease::out_trns.set(0, 0);
-		*last = false;
-	}
 }
-double AutoRelease::get(int i) const { (void)i; return out_trns.get(0); }
+double AutoRelease::get(int i) const { return out_trns.get(i); }
 double AutoRelease::set(int i, double v) {
-	(void)i;
 	uintptr_t data = trns_data(hash, sizeof(bool)+sizeof(double));
+	TRNS_DISCARD_USED();
 	bool* last = (bool*)data; data += sizeof(bool);
 	double* time = (double*)data; data += sizeof(double);
 	bool pressed = v != 0;
-	if((!(*last)) && pressed) {
-		*time = 0;
-		out_trns.set(0, v);
-		push_timer(hash, time_ms, false);
+	double ret = 0;
+	if(pressed) {
+		if(!(*last)) {
+			*time = 0;
+			out_trns.set(i, ret = v);
+			push_timer(hash, time_ms, false);
+		}
+		else {
+			if(*time >= time_ms)
+				out_trns.set(i, 0);
+			else out_trns.set(i, ret = v);
+		}
 	}
-	else if((*last) && !pressed) {
-		out_trns.set(0, 0);
-		pop_timer(hash, -1, false);
+	else {
+		if(*last) pop_timer(hash, -1, false);
+		out_trns.set(i, 0);
 	}
 	*last = pressed;
-	return v;
+	return ret;
 }

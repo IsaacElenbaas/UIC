@@ -53,8 +53,8 @@ void pop_timer(uintptr_t hash, double time_ms, bool repeat) {
 		if(std::get<0>(*i) == hash && (
 			std::get<1>(*i) == time_ms || time_ms == -1
 		)) {
-			clock_timers.erase_after(last);
-			break;
+			clock_timers.erase_after(i = last);
+			if(time_ms != -1) break;
 		}
 	}
 }
@@ -134,6 +134,7 @@ static void clock_thread() {
 
 /*{{{ void process_frame()*/
 extern void trigger_timeouts();
+extern void trns_clear_used();
 static void process_frame() {
 	trigger_timeouts();
 	size_t locks;
@@ -145,6 +146,7 @@ static void process_frame() {
 	}
 	user_process_frame();
 	for(size_t i = 0; i < locks; i++) { inputs_sem.release(); }
+	trns_clear_used();
 }
 /*}}}*/
 

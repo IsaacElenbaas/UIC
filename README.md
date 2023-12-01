@@ -8,3 +8,6 @@ My goal for this project is for it to be the controller equivalent of QMK Firmwa
 Features:  
 * Corrects analog stick drift and roundness
 * Provides *very* basic Tap Dance functionality
+* Provides flexible analog response and curve customization
+* Has modifiers to auto-hold or auto-release inputs
+* Up next: toggles and analog emulation

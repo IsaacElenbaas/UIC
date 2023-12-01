@@ -811,11 +811,14 @@ void Controller::init() {
 	c = codes.insert(++c, (decltype(codes)::value_type){BTN_A, 0});
 	i = inputs_vec.emplace(++i);
 	(*i).digital = true;
-	c = codes.insert(++c, (decltype(codes)::value_type){BTN_B, 0});
+	c = codes.insert(++c, (decltype(codes)::value_type){BTN_X, 0});
 	i = inputs_vec.emplace(++i);
 	(*i).digital = true;
-	c = codes.insert(++c, (decltype(codes)::value_type){BTN_X, 0});
+	c = codes.insert(++c, (decltype(codes)::value_type){BTN_B, 0});
 	last_inputs_vec = decltype(inputs_vec)(inputs_vec);
+	for(size_t i = 0; i < inputs_vec.size(); i++) {
+		inputs_vec[i].hash = (uintptr_t)&inputs_vec[i];
+	}
 	inputs = inputs_vec.data();
 
 	bool xbox = extra_buttons+extra_analogs+extra_analog_2ds == 0;
@@ -853,7 +856,7 @@ void Controller::init() {
 		.name = "Xbox One Controller",
 		.ff_effects_max = 0
 	};
-	const char name[] = "UIT Controller";
+	const char name[] = "UIC Controller";
 	if(!xbox) strcpy(setup.name, name);
 
 	ioctl(fd, UI_DEV_SETUP, &setup);

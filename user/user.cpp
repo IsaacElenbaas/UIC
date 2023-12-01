@@ -123,12 +123,13 @@ void user_switch_profile(int profile, std::forward_list<std::forward_list<input>
 }
 
 void user_process_frame() {
-	// TODO: I_JOIN
 	if(DPAD            != NULL) con->inputs[CNTLR_DPAD]     = *DPAD;
 	if(LTHUMB          != NULL) con->inputs[CNTLR_LTHUMB]   = *LTHUMB;
 	if(RTHUMB          != NULL) con->inputs[CNTLR_RTHUMB]   = *RTHUMB;
 	if(LTRIGGER        != NULL) con->inputs[CNTLR_LTRIGGER] = *LTRIGGER;
 	if(RTRIGGER        != NULL) con->inputs[CNTLR_RTRIGGER] = *RTRIGGER;
+	//Bounds({{0, 1, 1, 0, 0.5}}, &con->inputs[CNTLR_RTRIGGER]).set(0, RTRIGGER->values[0]);
+	//Bounds({{0, 1, 0, 1, 0.35}}, &con->inputs[CNTLR_RTRIGGER]).set(0, RTRIGGER->values[0]);
 	if(START           != NULL) con->inputs[CNTLR_START]           = *START;
 	if(SELECT          != NULL) con->inputs[CNTLR_SELECT]          = *SELECT;
 	if(HOME            != NULL) con->inputs[CNTLR_HOME]            = *HOME;
@@ -140,9 +141,10 @@ void user_process_frame() {
 	if(RTHUMB_BUTTON   != NULL) con->inputs[CNTLR_RTHUMB_BUTTON]   = *RTHUMB_BUTTON;
 	if(Y               != NULL) con->inputs[CNTLR_Y]               = *Y;
 	if(A               != NULL) con->inputs[CNTLR_A]               = *A;
+	//AutoRelease(500, Aggregate(&con->inputs[CNTLR_A])).set(0, A->values[0]);
 	if(X               != NULL) con->inputs[CNTLR_X]               = *X;
 	if(B               != NULL) con->inputs[CNTLR_B]               = *B;
-	//TapDance(B, 1000, {new AutoRelease(500, &con->inputs[CNTLR_B]), new AutoRelease(500, &con->inputs[CNTLR_B])});
+	//TapDance(1000, {new Extend(500, &con->inputs[CNTLR_B]), new Extend(500, Aggregate(&con->inputs[CNTLR_A]))}).set(0, B->values[0]);
 	con->apply();
 }
 
