@@ -8,6 +8,7 @@
 #include "bounds.h"
 #include "extend.h"
 #include "tapdance.h"
+#include "toggle.h"
 
 #define TRNS_CHECK_USED() bool* used = (bool*)data; data += sizeof(bool); if(*used) throw std::runtime_error("InputTransformation hash collision!"); else *used = true;
 #define TRNS_DISCARD_USED() data += sizeof(bool);
@@ -18,6 +19,7 @@ enum {
 	TRNS_BOUNDS,
 	TRNS_EXTEND,
 	TRNS_TAP_DANCE,
+	TRNS_TOGGLE,
 	TRNS_MAX
 };
 uintptr_t trns_hash(int trns, uintptr_t base, const std::vector<InputTransformation*> extras);

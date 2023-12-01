@@ -17,21 +17,20 @@ double Extend::set(int i, double v) {
 	double* time = (double*)data; data += sizeof(double);
 	double* value = (double*)data; data += sizeof(double);
 	bool pressed = v != 0;
-	double ret = 0;
 	if(pressed) {
 		if(!(*last)) {
 			*time = 0;
 			push_timer(hash, time_ms, false);
 		}
-		out_trns.set(i, ret = *value = v);
+		out_trns.set(i, *value = v);
 	}
 	else if(*value != 0) {
 		if(*time >= time_ms) {
 			out_trns.set(i, *value = 0);
 		}
-		else out_trns.set(i, ret = *value);
+		else out_trns.set(i, *value);
 	}
 	else out_trns.set(i, 0);
 	*last = pressed;
-	return ret;
+	return *value;
 }

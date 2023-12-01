@@ -140,6 +140,7 @@ void user_process_frame() {
 	if(LTHUMB_BUTTON   != NULL) con->inputs[CNTLR_LTHUMB_BUTTON]   = *LTHUMB_BUTTON;
 	if(RTHUMB_BUTTON   != NULL) con->inputs[CNTLR_RTHUMB_BUTTON]   = *RTHUMB_BUTTON;
 	if(Y               != NULL) con->inputs[CNTLR_Y]               = *Y;
+	//Toggle(&con->inputs[CNTLR_Y]).set(0, Y->values[0]);
 	if(A               != NULL) con->inputs[CNTLR_A]               = *A;
 	//AutoRelease(500, Aggregate(&con->inputs[CNTLR_A])).set(0, A->values[0]);
 	if(X               != NULL) con->inputs[CNTLR_X]               = *X;
