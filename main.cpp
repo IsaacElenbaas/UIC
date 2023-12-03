@@ -127,8 +127,10 @@ static void clock_thread() {
 			error = error/(CLOCK_ERROR_HISTORY-1)+std::max(0.0, elapsed-sleep)/CLOCK_ERROR_HISTORY;
 		process_frame();
 	}
-	delete clock_timer_promise;
-	clock_timer_promise = NULL;
+	clock_mut.lock();
+	delete ::clock_timer_promise;
+	::clock_timer_promise = NULL;
+	clock_mut.unlock();
 }
 /*}}}*/
 

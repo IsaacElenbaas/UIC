@@ -874,7 +874,6 @@ void Controller::reset() {
 	}
 }
 void Controller::apply() {
-	// TODO: need thread-safe guard on this
 	std::vector<struct input_event> events;
 	for(size_t i = 0; i < inputs_vec.size(); i++) {
 		int axes = (inputs_vec[i].digital) ? 1 : inputs_vec[i].axes;
