@@ -2,6 +2,9 @@
 #define AUTORELEASE_H
 #include "user.h"
 
+// AutoReleases can be used to automatically release an input after a specified amount of time
+// This time can be changed dynamically
+// Combining AutoReleases with Extends may be useful
 class AutoRelease : public InputTransformation {
 	double time_ms;
 	InputTransformation& out_trns;

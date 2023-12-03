@@ -15,9 +15,8 @@ double AutoRelease::set(int i, double v) {
 	TRNS_DISCARD_USED();
 	bool* last = (bool*)data; data += sizeof(bool);
 	double* time = (double*)data; data += sizeof(double);
-	bool pressed = v != 0;
 	double ret = 0;
-	if(pressed) {
+	if(v != 0) {
 		if(!(*last)) {
 			*time = 0;
 			out_trns.set(i, ret = v);
@@ -33,6 +32,6 @@ double AutoRelease::set(int i, double v) {
 		if(*last) pop_timer(hash, -1, false);
 		out_trns.set(i, 0);
 	}
-	*last = pressed;
+	*last = v != 0;
 	return ret;
 }

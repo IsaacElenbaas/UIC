@@ -12,12 +12,11 @@ double Toggle::set(int i, double v) {
 	TRNS_DISCARD_USED();
 	bool* last = (bool*)data; data += sizeof(bool);
 	double* value = (double*)data; data += sizeof(double);
-	bool pressed = v != 0;
-	if(pressed) {
+	if(v != 0) {
 		if(!(*last))
 			*value = (*value == 0) ? v : 0;
 	}
 	out_trns.set(i, *value);
-	*last = pressed;
+	*last = v != 0;
 	return *value;
 }

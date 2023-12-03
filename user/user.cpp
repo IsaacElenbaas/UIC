@@ -126,7 +126,9 @@ void user_process_frame() {
 	if(DPAD            != NULL) con->inputs[CNTLR_DPAD]     = *DPAD;
 	if(LTHUMB          != NULL) con->inputs[CNTLR_LTHUMB]   = *LTHUMB;
 	if(RTHUMB          != NULL) con->inputs[CNTLR_RTHUMB]   = *RTHUMB;
+	//PulseLength(28, Bounds({{0, 1, 0, -1}}, Aggregate(&con->inputs[CNTLR_RTHUMB])), Aggregate(&con->inputs[CNTLR_RTHUMB])).set(0, RTHUMB->values[0]);
 	if(LTRIGGER        != NULL) con->inputs[CNTLR_LTRIGGER] = *LTRIGGER;
+	//PulseLength(28, &con->inputs[CNTLR_LTRIGGER]).set(0, LTRIGGER->values[0]);
 	if(RTRIGGER        != NULL) con->inputs[CNTLR_RTRIGGER] = *RTRIGGER;
 	//Bounds({{0, 1, 1, 0, 0.5}}, &con->inputs[CNTLR_RTRIGGER]).set(0, RTRIGGER->values[0]);
 	//Bounds({{0, 1, 0, 1, 0.35}}, &con->inputs[CNTLR_RTRIGGER]).set(0, RTRIGGER->values[0]);

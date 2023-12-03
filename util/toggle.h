@@ -2,6 +2,8 @@
 #define TOGGLE_H
 #include "user.h"
 
+// Toggles can be used to turn inputs into switches
+// Firing a Toggle once will turn the output on, and firing it again will turn the output off
 class Toggle : public InputTransformation {
 	InputTransformation& out_trns;
 public:

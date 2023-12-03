@@ -27,9 +27,8 @@ double TapDance::set(int i, double v) {
 	bool* last = (bool*)data; data += sizeof(bool);
 	int* stage = (int*)data; data += sizeof(int);
 	double* time = (double*)data; data += sizeof(double);
-	bool pressed = v != 0;
 	double ret = 0;
-	if((!(*last)) && pressed) {
+	if((!(*last)) && v != 0) {
 		(*stage)++;
 		*time = 0;
 		pop_timer(hash, -1, false);
@@ -45,6 +44,6 @@ double TapDance::set(int i, double v) {
 		pop_timer(hash, -1, false);
 	}
 	else if(*stage != 0) out[*stage-1]->set(i, 0);
-	*last = pressed;
+	*last = v != 0;
 	return ret;
 }

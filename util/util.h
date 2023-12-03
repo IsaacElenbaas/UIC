@@ -7,6 +7,7 @@
 #include "autorelease.h"
 #include "bounds.h"
 #include "extend.h"
+#include "pulselength.h"
 #include "tapdance.h"
 #include "toggle.h"
 
@@ -18,6 +19,7 @@ enum {
 	TRNS_AUTO_RELEASE,
 	TRNS_BOUNDS,
 	TRNS_EXTEND,
+	TRNS_PULSE_LENGTH,
 	TRNS_TAP_DANCE,
 	TRNS_TOGGLE,
 	TRNS_MAX
