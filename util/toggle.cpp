@@ -16,7 +16,7 @@ double Toggle::set(int i, double v) {
 		if(!(*last))
 			*value = (*value == 0) ? v : 0;
 	}
-	out_trns.set(i, *value);
 	*last = v != 0;
+	out_trns.set(i, *value);
 	return *value;
 }

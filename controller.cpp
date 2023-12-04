@@ -3,7 +3,6 @@
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
-#include <forward_list>
 #include <iostream>
 #include <libevdev/libevdev.h>
 #include <limits>
@@ -703,41 +702,23 @@ void calibration_event(device* dev, int type, int code, int value) {
 /*}}}*/
 
 int Controller::add_button(int code) {
-	if(available_buttons > 0) {
-		inputs_vec.emplace(inputs_vec.begin());
-		inputs_vec[0].digital = true;
-		codes.insert(codes.begin(), (decltype(codes)::value_type){code, 0});
-		// TODO: init button
+	if(code == -1) {
+		if(available_buttons == 0) return -1;
+		// https://github.com/torvalds/linux/tree/master/drivers/hid/hid-input.c
+		// search for HID_GD_GAMEPAD
+		code = BTN_TRIGGER_HAPPY+((CNTLR_MAX_BUTTONS-0xf-4)-available_buttons);
 		available_buttons--;
-		extra_buttons++;
 	}
-	else return -1;
-	return CNTLR_INPUT_MAX+extra_buttons+extra_analogs+extra_analog_2ds-1;
-}
-int Controller::add_analog(int code) {
-	if(available_axes > 0) {
-		inputs_vec.emplace(inputs_vec.begin());
-		inputs_vec[0].digital = false;
-		inputs_vec[0].axes = 1;
-		codes.insert(codes.begin(), (decltype(codes)::value_type){code, 0});
-		// TODO: init axis
-		available_axes--;
-		extra_analogs++;
+	inputs_vec.emplace(inputs_vec.end());
+	inputs_vec[inputs_vec.size()-1].digital = true;
+	codes.insert(codes.begin(), (decltype(codes)::value_type){code, 0});
+	if(fd == -1) {
+		fd = open("/dev/uinput", O_WRONLY);
+		ioctl(fd, UI_SET_EVBIT, EV_KEY); // enable button handling
+		ioctl(fd, UI_SET_EVBIT, EV_ABS); // enable absolute analog handling
 	}
-	else return -1;
-	return CNTLR_INPUT_MAX+extra_buttons+extra_analogs+extra_analog_2ds-1;
-}
-int Controller::add_analog_2d(int x_code, int y_code) {
-	if(available_axes > 0) {
-		inputs_vec.emplace(inputs_vec.begin());
-		inputs_vec[0].digital = false;
-		inputs_vec[0].axes = 2;
-		codes.insert(codes.begin(), (decltype(codes)::value_type){x_code, y_code});
-		// TODO: init axes
-		available_axes -= 2;
-		extra_analog_2ds++;
-	}
-	else return -1;
+	ioctl(fd, UI_SET_KEYBIT, code);
+	extra_buttons++;
 	return CNTLR_INPUT_MAX+extra_buttons+extra_analogs+extra_analog_2ds-1;
 }
 static void init_abs(int fd, int code, int min, int max) {
@@ -752,6 +733,49 @@ static void init_abs(int fd, int code, int min, int max) {
 		}
 	};
 	ioctl(fd, UI_ABS_SETUP, &setup);
+}
+// there are actually plenty more axis identifiers available, but by default this should at least *look* like a legit gamepad
+// you can use ABS_Z, ABS_RZ, ABS_THROTTLE, ABS_RUDDER, ABS_WHEEL, and anything at or above ABS_HAT2X
+// https://github.com/torvalds/linux/tree/master/include/uapi/linux/input-event-codes.h
+int Controller::add_analog(int code) {
+	if(code == -1) {
+		if(available_axes == 0) return -1;
+		code = ABS_HAT1X+((CNTLR_MAX_ANALOGS-3*2-2)-available_axes);
+		available_axes--;
+	}
+	inputs_vec.emplace(inputs_vec.end());
+	inputs_vec[inputs_vec.size()-1].digital = false;
+	inputs_vec[inputs_vec.size()-1].axes = 1;
+	codes.insert(codes.begin(), (decltype(codes)::value_type){code, 0});
+	if(fd == -1) {
+		fd = open("/dev/uinput", O_WRONLY);
+		ioctl(fd, UI_SET_EVBIT, EV_KEY); // enable button handling
+		ioctl(fd, UI_SET_EVBIT, EV_ABS); // enable absolute analog handling
+	}
+	init_abs(fd, code, 0, 1023);
+	extra_analogs++;
+	return CNTLR_INPUT_MAX+extra_buttons+extra_analogs+extra_analog_2ds-1;
+}
+int Controller::add_analog_2d(int x_code, int y_code) {
+	if(x_code == -1) {
+		if(available_axes <= 1) return -1;
+		x_code = ABS_HAT1X+((CNTLR_MAX_ANALOGS-3*2-2)-available_axes);
+		available_axes -= 2;
+	}
+	if(y_code == -1) y_code = x_code+1;
+	inputs_vec.emplace(inputs_vec.end());
+	inputs_vec[inputs_vec.size()-1].digital = false;
+	inputs_vec[inputs_vec.size()-1].axes = 2;
+	codes.insert(codes.begin(), (decltype(codes)::value_type){x_code, y_code});
+	if(fd == -1) {
+		fd = open("/dev/uinput", O_WRONLY);
+		ioctl(fd, UI_SET_EVBIT, EV_KEY); // enable button handling
+		ioctl(fd, UI_SET_EVBIT, EV_ABS); // enable absolute analog handling
+	}
+	init_abs(fd, x_code, 0, 1023); //-32768, 32767); I'm lazy and don't want to set something up to identify later-added 2Ds
+	init_abs(fd, y_code, 0, 1023); //-32768, 32767); it's not like programs will smoothly identify them anyway. . .
+	extra_analog_2ds++;
+	return CNTLR_INPUT_MAX+extra_buttons+extra_analogs+extra_analog_2ds-1;
 }
 void Controller::init() {
 	auto i = inputs_vec.begin();
@@ -815,28 +839,31 @@ void Controller::init() {
 	i = inputs_vec.emplace(++i);
 	(*i).digital = true;
 	c = codes.insert(++c, (decltype(codes)::value_type){BTN_B, 0});
-	last_inputs_vec = decltype(inputs_vec)(inputs_vec);
 	for(size_t i = 0; i < inputs_vec.size(); i++) {
 		inputs_vec[i].hash = (uintptr_t)&inputs_vec[i];
 	}
+	last_inputs_vec = decltype(inputs_vec)(inputs_vec);
 	inputs = inputs_vec.data();
 
 	bool xbox = extra_buttons+extra_analogs+extra_analog_2ds == 0;
-	fd = open("/dev/uinput", O_WRONLY);
-	ioctl(fd, UI_SET_EVBIT, EV_KEY); // enable button handling
-	ioctl(fd, UI_SET_KEYBIT, BTN_TR2);
-	ioctl(fd, UI_SET_KEYBIT, BTN_TL2);
+	if(fd == -1) {
+		fd = open("/dev/uinput", O_WRONLY);
+		ioctl(fd, UI_SET_EVBIT, EV_KEY); // enable button handling
+		ioctl(fd, UI_SET_EVBIT, EV_ABS); // enable absolute analog handling
+	}
+
+	ioctl(fd, UI_SET_KEYBIT, BTN_TR2); // called BTN_START (0x13b) sometimes
+	ioctl(fd, UI_SET_KEYBIT, BTN_TL2); // called BTN_SELECT (0x13a) sometimes
 	//ioctl(fd, UI_SET_KEYBIT, BTN_MODE);
 	ioctl(fd, UI_SET_KEYBIT, BTN_TL);
 	ioctl(fd, UI_SET_KEYBIT, BTN_TR);
 	ioctl(fd, UI_SET_KEYBIT, BTN_THUMBL);
 	ioctl(fd, UI_SET_KEYBIT, BTN_THUMBR);
-	ioctl(fd, UI_SET_KEYBIT, BTN_Y); // called C sometimes
+	ioctl(fd, UI_SET_KEYBIT, BTN_Y); // called BTN_C (0x132) sometimes
 	ioctl(fd, UI_SET_KEYBIT, BTN_A);
 	ioctl(fd, UI_SET_KEYBIT, BTN_B);
 	ioctl(fd, UI_SET_KEYBIT, BTN_X);
 
-	ioctl(fd, UI_SET_EVBIT, EV_ABS); // enable absolute analog handling
 	init_abs(fd, ABS_HAT0X, -1, 1);
 	init_abs(fd, ABS_HAT0Y, -1, 1);
 	init_abs(fd, ABS_X,   -32768, 32767);
@@ -890,12 +917,16 @@ void Controller::apply() {
 					case ABS_HAT0Y:
 						events[events.size()-1].value = std::round(inputs_vec[i].values[a]);
 						break;
+					case ABS_X:
+					case ABS_Y:
+					case ABS_RY:
+					case ABS_GAS:
+						events[events.size()-1].value = std::round(32767*inputs_vec[i].values[a]);
+						break;
 					case ABS_BRAKE:
 					case ABS_RX:
-						events[events.size()-1].value = std::round(1023*inputs_vec[i].values[a]);
-						break;
 					default:
-						events[events.size()-1].value = std::round(32767*inputs_vec[i].values[a]);
+						events[events.size()-1].value = std::round(1023*inputs_vec[i].values[a]);
 				}
 			}
 		}

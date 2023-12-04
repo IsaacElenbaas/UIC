@@ -6,9 +6,13 @@
 #include "aggregate.h"
 #include "autorelease.h"
 #include "bounds.h"
+#include "deadzone.h"
 #include "extend.h"
+#include "noop.h"
 #include "pulselength.h"
+#include "rapidtrigger.h"
 #include "tapdance.h"
+#include "thresholds.h"
 #include "toggle.h"
 
 #define TRNS_CHECK_USED() bool* used = (bool*)data; data += sizeof(bool); if(*used) throw std::runtime_error("InputTransformation hash collision!"); else *used = true;
@@ -18,9 +22,13 @@ enum {
 	TRNS_AGGREGATE,
 	TRNS_AUTO_RELEASE,
 	TRNS_BOUNDS,
+	TRNS_DEADZONE,
 	TRNS_EXTEND,
+	TRNS_NOOP,
 	TRNS_PULSE_LENGTH,
+	TRNS_RAPID_TRIGGER,
 	TRNS_TAP_DANCE,
+	TRNS_THRESHOLDS,
 	TRNS_TOGGLE,
 	TRNS_MAX
 };

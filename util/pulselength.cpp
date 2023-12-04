@@ -32,22 +32,21 @@ double PulseLength::set(int i, double v) {
 	double* value = (double*)data; data += sizeof(double);
 	if(v != 0) {
 		double low = min_state_ms;
-		double high = fabs(v)*(1-fabs(v));
+		double high = 2*fabs(v)*(1-fabs(v));
 		if(high != 0) high = low/high;
-		if(v < 0.5) std::swap(low, high);
+		if(fabs(v) < 0.5) std::swap(low, high);
 		if(!(*last) || *time >= ((*value == 0) ? low : high)) {
 			*time = 0;
 			if(*value == 0) {
-				((neg && v < 0) ? out_trns_neg : out_trns).set(i, *value = 1);
+				*value = 1;
 				if(high != 0) push_timer(hash, high, false);
 			}
 			else {
-				((neg && v < 0) ? out_trns_neg : out_trns).set(i, *value = 0);
+				*value = 0;
 				if(low != 0) push_timer(hash, low, false);
 			}
 		}
 		else {
-			((neg && v < 0) ? out_trns_neg : out_trns).set(i, *value);
 			// because we check low and high based on their *current* values for early adjustment, timers can trigger too early - so always refresh them
 			pop_timer(hash, -1, false);
 			push_timer(hash, (*value == 0) ? low : high, false);
@@ -55,8 +54,9 @@ double PulseLength::set(int i, double v) {
 	}
 	else {
 		if(*last) pop_timer(hash, -1, false);
-		((neg && v < 0) ? out_trns_neg : out_trns).set(i, *value = 0);
+		*value = 0;
 	}
+	((neg && v < 0) ? out_trns_neg : out_trns).set(i, *value);
 	if(neg) ((v < 0) ? out_trns : out_trns_neg).set(i, 0);
 	*last = v != 0;
 	return *value;

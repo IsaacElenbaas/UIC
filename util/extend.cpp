@@ -3,7 +3,7 @@
 
 // Extends extend the length of a press
 Extend::Extend(double time_ms, const InputTransformation& out_trns) : time_ms(time_ms), out_trns(const_cast<InputTransformation&>(out_trns)) {
-	_hash = trns_hash(TRNS_EXTEND, time_ms, {const_cast<InputTransformation*>(&out_trns)});
+	_hash = trns_hash(TRNS_EXTEND, out_trns.hash, {});
 	uintptr_t data = trns_data(hash, sizeof(bool)+sizeof(double)+sizeof(double));
 	TRNS_DISCARD_USED();
 	data += sizeof(bool);
@@ -22,15 +22,11 @@ double Extend::set(int i, double v) {
 			*time = 0;
 			push_timer(hash, time_ms, false);
 		}
-		out_trns.set(i, *value = v);
+		*value = v;
 	}
-	else if(*value != 0) {
-		if(*time >= time_ms) {
-			out_trns.set(i, *value = 0);
-		}
-		else out_trns.set(i, *value);
-	}
-	else out_trns.set(i, 0);
+	else if(*time >= time_ms)
+		*value = 0;
 	*last = v != 0;
+	out_trns.set(i, *value);
 	return *value;
 }

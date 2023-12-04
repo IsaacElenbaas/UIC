@@ -8,8 +8,8 @@ UTILS=$(patsubst %.cpp, %.o, $(wildcard ./util/*.cpp))
 .PHONY: all
 all: main
 
-main: main.cpp main.h user.h controller.o $(UTILS) user/user.o
-	$(CC) $(CXXFLAGS) $(INC_PATH) -o $@ $< controller.o $(UTILS) user/user.o $(LIB_PATH) $(LIBS)
+main: main.cpp main.h user.h controller.o scancodes.o keyboard.o $(UTILS) user/user.o
+	$(CC) $(CXXFLAGS) $(INC_PATH) -o $@ $< controller.o scancodes.o keyboard.o $(UTILS) user/user.o $(LIB_PATH) $(LIBS)
 
 controller.o: controller.cpp controller.h main.h user.h
 	$(CC) $(CXXFLAGS) $(INC_PATH) -c -o $@ $< $(LIB_PATH) $(LIBS)

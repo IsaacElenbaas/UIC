@@ -119,7 +119,7 @@ static void clock_thread() {
 						std::get<2>(*i) -= std::get<1>(*i);
 					}
 				}
-				else if(std::get<1>(*i) < 0)
+				else if(std::get<1>(*i) <= 0)
 					clock_timers.erase_after(i = last);
 			}
 		}
@@ -339,7 +339,9 @@ static void device_thread(device* dev) {
 /*}}}*/
 
 /*{{{ int main()*/
+extern void init_scancodes();
 int main() {
+	init_scancodes();
 
 	/*{{{ init*/
 	struct termios oldt, newt;

@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <forward_list>
+#include <libevdev/libevdev.h>
 #include <vector>
 
 // Hat switch is given by evdev as 2 axes so they could be used as such
@@ -98,7 +99,7 @@ class InputTransformation {
 	}
 protected:
 	uintptr_t _hash;
-	double values[sizeof(((input*)0)->values)/sizeof(((input*)0)->values[0])];
+	double values[sizeof(input::values)/sizeof(((input*)0)->values[0])];
 	InputTransformation() {};
 public:
 	const uintptr_t& hash = _hash;
@@ -184,7 +185,7 @@ extern double elapsed;
 
 class Controller {
 	int fd = -1;
-	int available_buttons = CNTLR_MAX_BUTTONS-4-13;
+	int available_buttons = CNTLR_MAX_BUTTONS-0xf-4;
 	int available_axes = CNTLR_MAX_ANALOGS-3*2-2;
 	int extra_buttons = 0;
 	int extra_analogs = 0;
@@ -194,9 +195,21 @@ class Controller {
 public:
 	input* inputs = NULL;
 	// see https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h
-	int add_button(int code);
-	int add_analog(int code);
-	int add_analog_2d(int x_code, int y_code);
+	int add_button(int code = -1);
+	int add_analog(int code = -1);
+	int add_analog_2d(int x_code = -1, int y_code = -1);
+	void init();
+	void reset();
+	void apply();
+};
+class Keyboard {
+	int fd = -1;
+	std::vector<input> inputs_vec, last_inputs_vec;
+	std::vector<int> codes;
+public:
+	input* inputs = NULL;
+	// see https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h
+	int add_key(int code);
 	void init();
 	void reset();
 	void apply();

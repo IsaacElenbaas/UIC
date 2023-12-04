@@ -42,6 +42,7 @@ double TapDance::set(int i, double v) {
 		*stage = 0;
 		*time = 0;
 		pop_timer(hash, -1, false);
+		push_timer(hash, 0, false);
 	}
 	else if(*stage != 0) out[*stage-1]->set(i, 0);
 	*last = v != 0;

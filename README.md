@@ -1,7 +1,7 @@
 # Ultimate Input Configurator
 Steam Controller Configuration has upset me for the last time - why can't I do analog emulation with a trigger?
 
-This is ready for use for controller-only customization, but I have not attempted to add additional controller or keyboard buttons.
+This is technically ready for use by people who are not me.
 
 My goal for this project is for it to be the controller equivalent of QMK Firmware. Multiple inputs and outputs (keyboard or controller) per profile will be supported.
 
