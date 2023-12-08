@@ -7,8 +7,14 @@ Deadzone::Deadzone(double deadzone, const InputTransformation& out_trns) : deadz
 }
 double Deadzone::get(int i) const { return out_trns.get(i); }
 double Deadzone::set(int i, double v) {
-	if(fabs(v) < deadzone) v = 0;
-	else v = (v-std::copysign(deadzone, v))/(1-deadzone);
+	if(deadzone >= 0) {
+		if(fabs(v) <= deadzone) v = 0;
+		else v = (v-std::copysign(deadzone, v))/(1-deadzone);
+	}
+	else {
+		if(fabs(v) >= 1+deadzone) v = std::copysign(1, v);
+		else v = v/(1+deadzone);
+	}
 	out_trns.set(i, v);
 	return v;
 }

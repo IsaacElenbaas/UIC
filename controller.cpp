@@ -203,6 +203,13 @@ void assign_type(int* input_type, int* input_side) {
 			std::cout << "\033[A\r\033[KInput type: ";
 			*input_type = -1;
 		}
+		else if(
+			*input_type == ((stage == 1)
+				? (int)analog_2d_type_max : (stage == 2)
+				? (int)analog_type_max
+				: (int)button_type_max
+			)
+		) (*input_type) = 0;
 	}
 	std::cout << "Press L if this input is on the left side of the controller or R if on the right" << std::endl;
 	int c;
@@ -709,9 +716,9 @@ int Controller::add_button(int code) {
 		code = BTN_TRIGGER_HAPPY+((CNTLR_MAX_BUTTONS-0xf-4)-available_buttons);
 		available_buttons--;
 	}
-	inputs_vec.emplace(inputs_vec.end());
+	inputs_vec.emplace_back();
 	inputs_vec[inputs_vec.size()-1].digital = true;
-	codes.insert(codes.begin(), (decltype(codes)::value_type){code, 0});
+	codes.push_back((decltype(codes)::value_type){code, 0});
 	if(fd == -1) {
 		fd = open("/dev/uinput", O_WRONLY);
 		ioctl(fd, UI_SET_EVBIT, EV_KEY); // enable button handling
@@ -743,10 +750,10 @@ int Controller::add_analog(int code) {
 		code = ABS_HAT1X+((CNTLR_MAX_ANALOGS-3*2-2)-available_axes);
 		available_axes--;
 	}
-	inputs_vec.emplace(inputs_vec.end());
+	inputs_vec.emplace_back();
 	inputs_vec[inputs_vec.size()-1].digital = false;
 	inputs_vec[inputs_vec.size()-1].axes = 1;
-	codes.insert(codes.begin(), (decltype(codes)::value_type){code, 0});
+	codes.push_back((decltype(codes)::value_type){code, 0});
 	if(fd == -1) {
 		fd = open("/dev/uinput", O_WRONLY);
 		ioctl(fd, UI_SET_EVBIT, EV_KEY); // enable button handling
@@ -763,10 +770,10 @@ int Controller::add_analog_2d(int x_code, int y_code) {
 		available_axes -= 2;
 	}
 	if(y_code == -1) y_code = x_code+1;
-	inputs_vec.emplace(inputs_vec.end());
+	inputs_vec.emplace_back();
 	inputs_vec[inputs_vec.size()-1].digital = false;
 	inputs_vec[inputs_vec.size()-1].axes = 2;
-	codes.insert(codes.begin(), (decltype(codes)::value_type){x_code, y_code});
+	codes.push_back((decltype(codes)::value_type){x_code, y_code});
 	if(fd == -1) {
 		fd = open("/dev/uinput", O_WRONLY);
 		ioctl(fd, UI_SET_EVBIT, EV_KEY); // enable button handling
@@ -907,7 +914,7 @@ void Controller::apply() {
 		for(int a = 0; a < axes; a++) {
 			if(inputs_vec[i].values[a] != last_inputs_vec[i].values[a]) {
 				if(codes[i][a] < 0) continue;
-				events.emplace(events.end());
+				events.emplace_back();
 				events[events.size()-1].type = (inputs_vec[i].digital) ? EV_KEY : EV_ABS;
 				events[events.size()-1].code = codes[i][a];
 				if(inputs_vec[i].digital)
@@ -933,7 +940,7 @@ void Controller::apply() {
 	}
 
 	if(!events.empty()) {
-		events.emplace(events.end());
+		events.emplace_back();
 		events[events.size()-1].type = EV_SYN;
 		events[events.size()-1].code = SYN_REPORT;
 		events[events.size()-1].value = 0;

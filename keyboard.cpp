@@ -6,9 +6,9 @@
 #include "user.h"
 
 int Keyboard::add_key(int code) {
-	inputs_vec.emplace(inputs_vec.end());
+	inputs_vec.emplace_back();
 	inputs_vec[inputs_vec.size()-1].digital = true;
-	codes.insert(codes.begin(), code);
+	codes.push_back(code);
 	if(fd == -1) {
 		fd = open("/dev/uinput", O_WRONLY);
 		ioctl(fd, UI_SET_EVBIT, EV_KEY); // enable button handling
@@ -56,12 +56,12 @@ void Keyboard::apply() {
 		if(inputs_vec[i].values[0] != last_inputs_vec[i].values[0]) {
 			if(codes[i] < 0) continue;
 			if(scancodes[codes[i]] != 0) {
-				events.emplace(events.end());
+				events.emplace_back();
 				events[events.size()-1].type = EV_MSC;
 				events[events.size()-1].code = MSC_SCAN;
 				events[events.size()-1].value = scancodes[codes[i]];
 			}
-			events.emplace(events.end());
+			events.emplace_back();
 			events[events.size()-1].type = EV_KEY;
 			events[events.size()-1].code = codes[i];
 			events[events.size()-1].value = inputs_vec[i].values[0];
@@ -69,7 +69,7 @@ void Keyboard::apply() {
 	}
 
 	if(!events.empty()) {
-		events.emplace(events.end());
+		events.emplace_back();
 		events[events.size()-1].type = EV_SYN;
 		events[events.size()-1].code = SYN_REPORT;
 		events[events.size()-1].value = 0;

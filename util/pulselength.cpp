@@ -37,7 +37,7 @@ double PulseLength::set(int i, double v) {
 		if(fabs(v) < 0.5) std::swap(low, high);
 		if(!(*last) || *time >= ((*value == 0) ? low : high)) {
 			*time = 0;
-			if(*value == 0) {
+			if(*value == 0 || high == 0) {
 				*value = 1;
 				if(high != 0) push_timer(hash, high, false);
 			}

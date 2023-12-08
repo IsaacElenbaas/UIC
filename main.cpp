@@ -40,7 +40,7 @@ static void signal(int signum) {
 	// unfortunately closing evdev device FDs or freeing the device objects does not interrupt next_event
 }
 
-/*{{{ void push/pop_timer(input_t input, int time_ms, bool repeat)*/
+/*{{{ void push/pop_timer(uintptr_t hash, int time_ms, bool repeat)*/
 static std::forward_list<std::tuple<double, double, uintptr_t>> clock_timers;
 
 void push_timer(uintptr_t hash, double time_ms, bool repeat) {
@@ -109,7 +109,7 @@ static void clock_thread() {
 		elapsed = ((std::chrono::duration<double, std::milli>)(now-last)).count();
 		// things expecting to fire because of their timer should always do so
 		if(status == std::future_status::timeout && sleep != std::numeric_limits<int>::max())
-			elapsed = std::max(elapsed, sleep+0.1);
+			elapsed = std::max(elapsed, sleep+error+0.1);
 		last = now;
 		for(auto i = clock_timers.begin(), last = clock_timers.before_begin(); i != clock_timers.end(); last = i++) {
 			std::get<2>(*i) += elapsed;
