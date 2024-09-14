@@ -38,7 +38,7 @@ double TapDance::set(int i, double v) {
 		if(j != *stage-1) out[j]->set(i, 0);
 	}
 	if(*stage == (int)out.size() || (*stage != 0 && *time >= timeout_ms)) {
-		out[*stage-1]->set(i, ret = 1);
+		ret = out[*stage-1]->set(i, 1);
 		*stage = 0;
 		*time = 0;
 		pop_timer(hash, -1, false);

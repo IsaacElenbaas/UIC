@@ -56,8 +56,7 @@ double PulseLength::set(int i, double v) {
 		if(*last) pop_timer(hash, -1, false);
 		*value = 0;
 	}
-	((neg && v < 0) ? out_trns_neg : out_trns).set(i, *value);
-	if(neg) ((v < 0) ? out_trns : out_trns_neg).set(i, 0);
 	*last = v != 0;
-	return *value;
+	if(neg) ((v < 0) ? out_trns : out_trns_neg).set(i, 0);
+	return ((neg && v < 0) ? out_trns_neg : out_trns).set(i, *value);
 }

@@ -78,6 +78,7 @@ static void clock_thread() {
 	double error = 0;
 	while(true) {
 		int sleep = std::numeric_limits<int>::max();
+		int sleep_timer = std::numeric_limits<int>::min();
 		clock_mut.lock();
 		if(::clock_timer_promise != clock_timer_promise) {
 			delete clock_timer_promise;
@@ -88,7 +89,9 @@ static void clock_thread() {
 		if(!clock_interrupt_later) {
 			clock_mut.unlock();
 			for(auto i = clock_timers.begin(); i != clock_timers.end(); ++i) {
-				sleep = std::min(sleep, (int)std::round(abs(std::get<1>(*i))-std::get<2>(*i)));
+				int ms = (int)std::round(abs(std::get<1>(*i))-std::get<2>(*i));
+				sleep = std::min(sleep, ms);
+				sleep_timer = std::max(sleep_timer, ms);
 			}
 			// account for time spent in process_frame and average error
 			sleep = std::max(0.0, sleep-round(((std::chrono::duration<double, std::milli>)(std::chrono::high_resolution_clock::now()-last)).count()+error));
@@ -107,9 +110,6 @@ static void clock_thread() {
 		if(stopping) break;
 		auto now = std::chrono::high_resolution_clock::now();
 		elapsed = ((std::chrono::duration<double, std::milli>)(now-last)).count();
-		// things expecting to fire because of their timer should always do so
-		if(status == std::future_status::timeout && sleep != std::numeric_limits<int>::max())
-			elapsed = std::max(elapsed, sleep+error+0.1);
 		last = now;
 		for(auto i = clock_timers.begin(), last = clock_timers.before_begin(); i != clock_timers.end(); last = i++) {
 			std::get<2>(*i) += elapsed;
@@ -123,8 +123,11 @@ static void clock_thread() {
 					clock_timers.erase_after(i = last);
 			}
 		}
-		if(status == std::future_status::timeout)
+		if(status == std::future_status::timeout && sleep != std::numeric_limits<int>::max()) {
 			error = error/(CLOCK_ERROR_HISTORY-1)+std::max(0.0, elapsed-sleep)/CLOCK_ERROR_HISTORY;
+			// things expecting to fire because of their timer should always do so
+			elapsed = std::max(elapsed, (double)sleep_timer);
+		}
 		process_frame();
 	}
 	clock_mut.lock();

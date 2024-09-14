@@ -15,6 +15,5 @@ double Deadzone::set(int i, double v) {
 		if(fabs(v) >= 1+deadzone) v = std::copysign(1, v);
 		else v = v/(1+deadzone);
 	}
-	out_trns.set(i, v);
-	return v;
+	return out_trns.set(i, v);
 }
