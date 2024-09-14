@@ -30,6 +30,5 @@ double RapidTrigger::set(int i, double v) {
 			*pressed = false;
 		}
 	}
-	out_trns.set(i, ret);
-	return ret;
+	return out_trns.set(i, ret);
 }

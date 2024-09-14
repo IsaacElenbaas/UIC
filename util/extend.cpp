@@ -27,6 +27,5 @@ double Extend::set(int i, double v) {
 	else if(*time >= time_ms)
 		*value = 0;
 	*last = v != 0;
-	out_trns.set(i, *value);
-	return *value;
+	return out_trns.set(i, *value);
 }

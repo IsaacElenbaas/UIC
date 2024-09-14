@@ -37,6 +37,5 @@ double Bounds::set(int i, double v) {
 			break;
 		}
 	}
-	out_trns.set(i, v);
-	return v;
+	return out_trns.set(i, v);
 }

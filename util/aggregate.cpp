@@ -18,6 +18,5 @@ double Aggregate::set(int i, double v) {
 		*used = true;
 	}
 	values[i] += v;
-	out_trns.set(i, values[i]);
-	return values[i];
+	return out_trns.set(i, values[i]);
 }

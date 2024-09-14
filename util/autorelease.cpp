@@ -26,6 +26,5 @@ double AutoRelease::set(int i, double v) {
 	}
 	else if(*last) pop_timer(hash, -1, false);
 	*last = v != 0;
-	out_trns.set(i, ret);
-	return ret;
+	return out_trns.set(i, ret);
 }
