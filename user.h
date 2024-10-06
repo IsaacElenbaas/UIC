@@ -182,6 +182,8 @@ struct button_calibrations {
 
 // milliseconds since last frame
 extern double elapsed;
+// does not round up to ensure timers are triggered
+extern double elapsed_real;
 
 class Controller {
 	int fd = -1;
