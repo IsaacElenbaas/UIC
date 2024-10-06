@@ -29,6 +29,7 @@ static std::counting_semaphore inputs_sem{0};
 std::forward_list<std::forward_list<input>> inputs;
 std::forward_list<std::forward_list<input>> user_inputs;
 double elapsed = 0;
+double elapsed_real = 0;
 
 static std::atomic<bool> stopping = false;
 static void signal(int signum) {
@@ -78,7 +79,7 @@ static void clock_thread() {
 	double error = 0;
 	while(true) {
 		int sleep = std::numeric_limits<int>::max();
-		int sleep_timer = std::numeric_limits<int>::min();
+		int sleep_timer = sleep;
 		clock_mut.lock();
 		if(::clock_timer_promise != clock_timer_promise) {
 			delete clock_timer_promise;
@@ -91,8 +92,8 @@ static void clock_thread() {
 			for(auto i = clock_timers.begin(); i != clock_timers.end(); ++i) {
 				int ms = (int)std::round(abs(std::get<1>(*i))-std::get<2>(*i));
 				sleep = std::min(sleep, ms);
-				sleep_timer = std::max(sleep_timer, ms);
 			}
+			sleep_timer = sleep;
 			// account for time spent in process_frame and average error
 			sleep = std::max(0.0, sleep-round(((std::chrono::duration<double, std::milli>)(std::chrono::high_resolution_clock::now()-last)).count()+error));
 		}
@@ -110,6 +111,7 @@ static void clock_thread() {
 		if(stopping) break;
 		auto now = std::chrono::high_resolution_clock::now();
 		elapsed = ((std::chrono::duration<double, std::milli>)(now-last)).count();
+		elapsed_real = elapsed;
 		last = now;
 		for(auto i = clock_timers.begin(), last = clock_timers.before_begin(); i != clock_timers.end(); last = i++) {
 			std::get<2>(*i) += elapsed;
@@ -123,7 +125,7 @@ static void clock_thread() {
 					clock_timers.erase_after(i = last);
 			}
 		}
-		if(status == std::future_status::timeout && sleep != std::numeric_limits<int>::max()) {
+		if(status == std::future_status::timeout && sleep_timer != std::numeric_limits<int>::max()) {
 			error = error/(CLOCK_ERROR_HISTORY-1)+std::max(0.0, elapsed-sleep)/CLOCK_ERROR_HISTORY;
 			// things expecting to fire because of their timer should always do so
 			elapsed = std::max(elapsed, (double)sleep_timer);
