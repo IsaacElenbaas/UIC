@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cmath>
 #include <iostream>
+#include "feature/playback.h"
 #include "user.h"
 #include "util/util.h"
 
@@ -29,7 +30,7 @@ input
 ;
 Controller* con = NULL;
 Keyboard* kb = NULL;
-int KB_EXTRA[17];
+Playback* pb = NULL;
 enum {
 	extra_hookline,
 	extra_f3,
@@ -48,7 +49,13 @@ enum {
 	extra_zoom_out,
 	extra_disable_hookline,
 	extra_enable_hookline,
+	extra_pause,
+	extra_t,
+	extra_y,
+	extra_entities,
+	EXTRA_COUNT
 };
+int KB_EXTRA[EXTRA_COUNT];
 bool fire_last;
 bool hook_last;
 int KB_EMOTE[6];
@@ -68,7 +75,7 @@ double hook_time = 0;
 double fire_time = 0;
 double fly_spin_interval;
 double fly_spin_intervals[FLY_SPIN_COUNT];
-#define IDLE_SPIN_ENABLED true
+#define IDLE_SPIN_ENABLED false
 #define IDLE_SPIN_COUNT 10
 #define IDLE_SPIN_MIN_INTERVAL 250
 #define IDLE_SPIN_VARIANCE 50
@@ -90,6 +97,8 @@ void user_switch_profile(int profile, std::forward_list<std::forward_list<input>
 	con->init();
 	if(kb == NULL) kb = new Keyboard();
 	kb->reset();
+	if(pb == NULL) pb = new Playback(60*60*50, {con}, {kb});
+	pb->clear();
 	for(int i = 0; i < (int)(sizeof(KB_EXTRA)/sizeof(KB_EXTRA[0])); i++) {
 		KB_EXTRA[i] = kb->add_key(KEY_1+i);
 	}
@@ -221,7 +230,7 @@ void user_process_frame() {
 /*}}}*/
 
 /*{{{ left thumbstick*/
-	double x = Deadzone(0.15, Deadzone(-(0.05+0.15*abs(LTHUMB->values[1])), Noop())).set(0, LTHUMB->values[0]);
+	double x = Deadzone(0.15, Deadzone(-(0.05+0.15*abs(LTHUMB->values[1])), Noop(LTHUMB))).set(0, LTHUMB->values[0]);
 
 	if(LTHUMB->values[1] > 0.85) {
 		x = (kb->inputs[KB_EXTRA[extra_hook]].values[0] == 0) ? std::copysign(1, RTHUMB->values[0]) : std::copysign(0.1, -RTHUMB->values[0]);
@@ -352,9 +361,63 @@ void user_process_frame() {
 		kb->inputs[KB_EXTRA[extra_switch_weapon]].values[0] = 0;
 /*}}}*/
 
-	con->inputs[CNTLR_START] = *START;
-	con->inputs[CNTLR_SELECT] = *SELECT;
-	kb->inputs[KB_EXTRA[extra_spec]] = *HOME;
+	kb->inputs[KB_EXTRA[extra_entities]] = *RTHUMB_BUTTON;
+
+/*{{{ playback / select + start*/
+	static bool playback_last = false;
+	static bool playback_releasing;
+	static bool playback = false;
+	if(START->values[0] != 0 && SELECT->values[0] != 0) {
+		if(!playback_last) {
+			playback_releasing = true;
+			playback = !playback;
+			pb->clear();
+		}
+		playback_last = true;
+	}
+	else playback_last = false;
+	if(!playback) {
+		con->inputs[CNTLR_START] = *START;
+		con->inputs[CNTLR_SELECT] = *SELECT;
+	}
+	else {
+		con->inputs[CNTLR_START].values[0] = 0;
+		con->inputs[CNTLR_SELECT].values[0] = 0;
+		if(playback_releasing) {
+			playback_releasing = !(START->values[0] == 0 && SELECT->values[0] == 0);
+		}
+		else {
+			static bool record_last = false;
+			static bool play_last = false;
+			if(START->values[0] != 0 && !play_last) pb->toggle_play();
+			if(SELECT->values[0] != 0 && !record_last) pb->toggle_record(2000);
+			play_last = (START->values[0] != 0);
+			record_last = (SELECT->values[0] != 0);
+		}
+	}
+/*}}}*/
+
+/*{{{ spec / pause*/
+	static bool spec_last;
+	bool spec = (AutoRelease(150, Noop(HOME)).set(0, HOME->values[0]) != 0);
+	static double spec_reference = 0;
+	static int spec_or_pause;
+	static double spec_time;
+	spec_reference += elapsed;
+	if(spec) {
+		if(!spec_last) spec_reference = 0;
+	}
+	else {
+		if(spec_last) {
+			spec_or_pause = (spec_reference < 150) ? extra_spec : extra_pause;
+			push_timer(0, spec_time = 50, false);
+		}
+		else if(spec_time > 0) spec_time -= elapsed;
+		kb->inputs[KB_EXTRA[spec_or_pause]].values[0] = (spec_time > 0) ? 1 : 0;
+	}
+	spec_last = spec;
+/*}}}*/
+
 	con->inputs[CNTLR_LBUMPER] = *LBUMPER;
 	con->inputs[CNTLR_RBUMPER] = *RBUMPER;
 	fire_last = RBUMPER->values[0] != 0;
@@ -427,6 +490,7 @@ void user_process_frame() {
 	if(!emote_r) emote_r = emote_RBACK != 0;
 /*}}}*/
 
+	pb->process();
 	con->apply();
 	kb->apply();
 }
