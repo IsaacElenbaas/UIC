@@ -192,10 +192,10 @@ class Controller {
 	int extra_buttons = 0;
 	int extra_analogs = 0;
 	int extra_analog_2ds = 0;
-	std::vector<input> inputs_vec, last_inputs_vec;
 	std::vector<std::array<int, 2>> codes;
 public:
 	input* inputs = NULL;
+	std::vector<input> inputs_vec, last_inputs_vec;
 	// see https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h
 	int add_button(int code = -1);
 	int add_analog(int code = -1);
@@ -206,10 +206,10 @@ public:
 };
 class Keyboard {
 	int fd = -1;
-	std::vector<input> inputs_vec, last_inputs_vec;
 	std::vector<int> codes;
 public:
 	input* inputs = NULL;
+	std::vector<input> inputs_vec, last_inputs_vec;
 	// see https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h
 	int add_key(int code);
 	void init();

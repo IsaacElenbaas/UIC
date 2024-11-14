@@ -4,7 +4,7 @@ LIB_PATH=#-L/home/dev_tools/apr/lib
 LIBS=-lm -levdev
 CXXFLAGS=-g -Wall -Wextra -O3 -std=c++20
 
-user.o: user.cpp ../user.h ../util/util.h
+user.o: ./user.cpp ../user.h $(wildcard ../util/*.h) $(wildcard ../feature/*.h)
 	$(CC) $(CXXFLAGS) $(INC_PATH) -c -o $@ $< $(LIB_PATH) $(LIBS)
 
 .PHONY: clean
